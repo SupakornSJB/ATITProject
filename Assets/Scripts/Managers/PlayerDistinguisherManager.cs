@@ -1,27 +1,24 @@
 using System.Collections.Generic;
 using Shared;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Managers
 {
     public class PlayerDistinguisherManager : NetworkSingleton<PlayerDistinguisherManager>
     {
-        public NetworkVariable<List<Color>> allPossibleColorList = new ();
-
-        public override void OnNetworkSpawn()
-        {
-            base.OnNetworkSpawn();
-            allPossibleColorList.Value = new List<Color> {Color.red, Color.blue, Color.green, Color.yellow};
-        }
+        private readonly List<Color> _pool = new() { Color.red, Color.blue, Color.green, Color.yellow };
+        private readonly HashSet<Color> _assigned = new();
 
         public Color RequestColor()
         {
-            return allPossibleColorList.Value[Random.Range(0, allPossibleColorList.Value.Count)];
+            foreach (var color in _pool)
+            {
+                if (_assigned.Add(color))
+                    return color;
+            }
+            return Color.white;
         }
 
-        private void ReEvaluateColor()
-        {
-        }
+        public void ReleaseColor(Color color) => _assigned.Remove(color);
     }
 }

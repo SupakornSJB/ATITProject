@@ -1,0 +1,6 @@
+<linker>
+  <assembly fullname="Google.Protobuf"        preserve="all"/>
+  <assembly fullname="Grpc.Core.Api"          preserve="all"/>
+  <assembly fullname="Grpc.AspNetCore.Server" preserve="all"/>
+  <assembly fullname="System.Net.Http"        preserve="all"/>
+</linker>

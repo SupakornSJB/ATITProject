@@ -100,3 +100,10 @@ InitTestScene*.unity*
 
 # Rider idea file
 /.idea/
+
+# NuGet packages cache
+/Assets/Packages/
+/grpc-extractor/
+
+# Stray native DLLs at repo root
+/*.dll
