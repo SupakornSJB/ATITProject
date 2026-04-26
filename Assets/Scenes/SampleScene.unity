@@ -597,6 +597,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
+  _playerColorConfig:
+  - playerId: player-1
+    color: {r: 1, g: 0, b: 0, a: 1}
+  - playerId: player-2
+    color: {r: 0, g: 0, b: 1, a: 1}
+  - playerId: player-3
+    color: {r: 0, g: 1, b: 0, a: 1}
+  - playerId: player-4
+    color: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
 --- !u!4 &1014689618
 Transform:
   m_ObjectHideFlags: 0
@@ -1023,7 +1032,7 @@ MonoBehaviour:
     Prefabs:
       NetworkPrefabsLists:
       - {fileID: 11400000, guid: 67002afb36147c6478260e0f32963b97, type: 2}
-    TickRate: 30
+    TickRate: 60
     ClientConnectionBufferTimeout: 10
     ConnectionApproval: 1
     ConnectionData: 
