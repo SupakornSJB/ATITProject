@@ -567,6 +567,489 @@ Debug.Log($"[IoT] player={evt.PlayerId} input={evt.InputName} " +
 This gives a full trace from physical device to game action without coupling game
 logic to physical device identity.
  
+---
+
+# Phase 3 — Space Shooter: Full Game Implementation
+
+## What This Phase Builds
+
+Phase 3 replaces the Flappy Bird POC with a complete asymmetric multiplayer space
+shooter. The pipeline (ESP32 → MQTT → ASP.NET → gRPC → Unity) is unchanged.
+All changes are within Unity itself.
  
+---
+
+## Game Design
+
+### Concept
+An asymmetric multiplayer space shooter. Two sides with opposing goals, one stage
+player who controls the environment for everyone.
+
+### Roles
+
+| Role | Players | Controls | Goal |
+|---|---|---|---|
+| Ship | Player 1, Player 2 | Joystick (move) + button (fire) | Destroy both boss birds |
+| Boss bird | Player 3, Player 4 | Button (flap) | Survive / reach the bottom |
+| Stage | Stage player | DHT11 + ultrasonic + button | Chaos — affects everyone |
+
+### Win Conditions
+
+| Condition | Winner |
+|---|---|
+| Both boss birds reach 0 HP | Ship players win |
+| All ships reach 0 HP | Bird players win |
+| Boss bird reaches bottom of screen | Bird players win |
+| Round timer expires | Side with more HP% remaining wins |
+
+### Screen Layout
+
+```
+╔══════════════════════════════════════╗
+║  [Boss HP bars]    [Zone indicator]  ║  ← top HUD
+║                                      ║
+║   Boss Bird 1      Boss Bird 2       ║  ← boss zone (top half)
+║      🐦                🐦            ║
+║   [Minion birds scattered]           ║
+║ ════════════════════════════════════ ║  ← boundary line
+║   🚀 Ship 1          🚀 Ship 2       ║  ← ship zone (bottom half)
+║                                      ║
+║  [Ship HP bars]   [Round timer]      ║  ← bottom HUD
+╚══════════════════════════════════════╝
+```
+
+### Pipes (optional mechanic)
+Horizontal barriers with a gap periodically descend from the top. `pipe-flip`
+button toggles whether the gap is in the upper or lower half. Affects both
+boss birds (navigation) and projectiles (blocked by solid sections).
+If no stage device registers `pipe-flip`, pipes do not spawn — the base
+game runs without them.
  
+---
+
+## Round Lifecycle
+
+```
+Waiting
+  → Ship players press "fire" to ready up (ShipReady flags)
+  → Boss players press "flap" to ready up (BirdReady flags)
+  → ALL four players ready OR admin POST /api/admin/start
+        ↓
+Countdown (5 seconds)
+  → Any player disconnects → back to Waiting
+        ↓
+Active
+  → IoT input processed, physics running, spawning active
+  → Win condition met → Ended
+  → Admin POST /api/admin/end → Ended
+        ↓
+Ended (10 second results screen)
+  → Callout: "SHIPS WIN" or "BIRDS WIN"
+  → All ready flags reset
+  → Timer expires → back to Waiting
+```
+
+### Ready-Up Logic
+- During `Waiting` phase only, `"fire"` input on ship player = toggle ready
+- During `Waiting` phase only, `"flap"` input on bird player = toggle ready
+- Same buttons used for gameplay — `IoTInputManager` routes by current phase
+- Individual ready state shown in waiting screen UI per player slot
+### Environmental Sensor During Waiting
+- Sensor events still received and stored in `EnvironmentState`
+- Effects not applied — `EnvironmentController` checks `RoundPhase.Active`
+- Zone indicator still visible on waiting screen (good for demo setup verification)
+---
+
+## Disconnect Policy
+
+| Scenario | Result |
+|---|---|
+| One ship disconnects, other remains | Round continues, disconnected ship despawns |
+| Both ships disconnect | Round ends immediately, bird players win |
+| One bird disconnects, other remains | Round continues, disconnected bird despawns |
+| Both birds disconnect | Round ends immediately, ship players win |
+| Any disconnect during Countdown | Back to Waiting, all ready flags reset |
+| Stage device disconnects | Last known zone/temp values held, warning logged |
  
+---
+
+## NetworkObject Hierarchy
+
+### `PlayerShip` (new)
+- `Rigidbody2D` — kinematic, velocity set from joystick each `FixedUpdate`
+- `NetworkVariable<int> ShipHealth` — starts at 100, reduced by minion collision
+- `NetworkVariable<bool> ShieldActive` — driven by `EnvironmentController`
+- `NetworkVariable<int> ShieldHealth` — starts at 50, absorbs damage when active
+- `NetworkVariable<Color> ShipColor` — assigned by `PlayerDistinguisherManager`
+- Server-only: `TakeDamage(int amount)` — checks shield first, then ship HP
+- Server-only: `SetVelocity(Vector2 v)` — called by `IoTInputManager` from joystick
+### `BossEnemyBird` (replaces `PlayerBird` for bird role)
+- Reuses Phase 1 `PlayerBird` Rigidbody + flap physics verbatim
+- `NetworkVariable<int> BossHealth` — starts at 100, reduced by projectile hits
+- `NetworkVariable<Color> BossColor` — assigned by `PlayerDistinguisherManager`
+- Server-only: `Flap()` — same as Phase 1, triggered by `"flap"` input from bird player
+- Server-only: `TakeDamage(int amount)` — reduces `BossHealth`, checks win condition
+- Despawn condition: reaches bottom of screen OR `BossHealth <= 0`
+### `EnemyBird` (minion — server-controlled)
+- Same Rigidbody + flap physics as `PlayerBird`
+- No `playerId` owner — server-controlled entirely
+- Server-side coroutine: `Flap()` called every `Random.Range(1f, 3f)` seconds
+- On collision with ship boundary: calls `PlayerShip.TakeDamage(10)`, then despawns
+- On round end: all live minions despawned by `EnemySpawnManager`
+### `Projectile` (new)
+- Spawned by `PlayerShip` on `"fire"` input during `Active` phase
+- Travels upward at fixed speed
+- On collision with `BossEnemyBird`: calls `BossEnemyBird.TakeDamage(20)`, despawns
+- On collision with `EnemyBird`: despawns both (projectile + minion), add score
+- Destroyed when reaching top of screen
+- Max 3 live projectiles per ship at once — enforced server-side
+### `PipeBarrier` (optional — only if stage device present)
+- Horizontal barrier NetworkObject with a gap
+- `NetworkVariable<bool> GapIsUpper` — toggled by `"pipe-flip"` input
+- Descends from top at fixed speed, despawns at bottom
+- Spawned by `PipeSpawnManager` every 8 seconds if stage device is registered
+---
+
+## New Singletons (all extend `NetworkSingleton<T>`)
+
+### `GameRoundManager`
+```csharp
+public class GameRoundManager : NetworkSingleton<GameRoundManager>
+{
+    public NetworkVariable<RoundPhase> CurrentPhase;
+    public NetworkVariable<float>      RoundTimer;       // counts down in Active
+    public NetworkVariable<bool>       Ship1Ready;
+    public NetworkVariable<bool>       Ship2Ready;
+    public NetworkVariable<bool>       Bird1Ready;
+    public NetworkVariable<bool>       Bird2Ready;
+ 
+    // Server-only
+    void Update();                              // drives countdown + round timer
+    void CheckWinConditions();                  // called each Update during Active
+    public void TransitionTo(RoundPhase phase); // fires callout + state change
+    public void HandleAdminCommand(string cmd); // "start_round", "end_round", "reset"
+    public void HandlePlayerDisconnect(string playerId);
+}
+ 
+public enum RoundPhase { Waiting, Countdown, Active, Ended }
+```
+
+### `EnvironmentController`
+```csharp
+public class EnvironmentController : NetworkSingleton<EnvironmentController>
+{
+    public NetworkVariable<float> Temperature;    // raw Celsius from DHT11
+    public NetworkVariable<int>   UltrasonicZone; // 1-4, resolved server-side
+    public NetworkVariable<int>   ActiveZoneEffect; // mirrors UltrasonicZone for UI
+ 
+    // Per-effect cooldown timestamps (server-only, not NetworkVariables)
+    float _lastShieldTrigger;   // Zone A — 15s cooldown
+    float _lastTimeSlow;        // Zone B — 20s cooldown
+    float _lastFrenzy;          // Zone D — 10s cooldown
+ 
+    // Called by IoTGameServiceImpl when EnvironmentEventRequest arrives
+    public void OnEnvironmentUpdate(string envKey, float value);
+ 
+    // Called each Update during Active phase only
+    void ApplyZoneEffects();
+    void ApplyTemperatureEffects();
+}
+```
+
+### Zone effects (applied in `ApplyZoneEffects()`)
+
+| Zone | Ship effect | Bird effect | Cooldown |
+|---|---|---|---|
+| 1 (0–20cm) | Shield activates (50 HP buffer) | Boss bird flap impulse +30% | 15s |
+| 2 (20–60cm) | `GlobalGameSpeed = 0.6` | `GlobalGameSpeed = 0.6` (affects both equally) | 20s |
+| 3 (60–120cm) | No effect | No effect | — |
+| 4 (120cm+) | More minions + minions deal +50% damage | Boss bird loses 2 HP/sec | 10s |
+
+Zone effects are removed immediately when zone changes (except shield HP which
+persists until depleted or recharged).
+
+### Temperature effects
+
+```
+temp < 20°C  → SpawnInterval = 8s  (slow)
+20–28°C      → SpawnInterval = 5s  (normal)
+28–34°C      → SpawnInterval = 3s  (fast)
+> 34°C       → SpawnInterval = 1.5s (aggressive)
+```
+
+Zone D frenzy halves the current `SpawnInterval` for its duration.
+Cap: `SpawnInterval` floor of 1s regardless of combined effects.
+
+### `GlobalGameSpeed` pattern (NOT `Time.timeScale`)
+
+```csharp
+// NetworkVariable on EnvironmentController
+public NetworkVariable<float> GlobalGameSpeed; // default 1.0
+ 
+// All physics-driven objects read this each FixedUpdate:
+rb.velocity = targetVelocity * EnvironmentController.Instance.GlobalGameSpeed.Value;
+```
+
+Never use `Time.timeScale` — it breaks NGO tick rate. All velocities, spawn
+timers, and animation speeds multiply by `GlobalGameSpeed` manually.
+
+### `EnemySpawnManager`
+```csharp
+public class EnemySpawnManager : NetworkSingleton<EnemySpawnManager>
+{
+    float _spawnInterval;       // driven by EnvironmentController.Temperature
+    List<NetworkObject> _liveMinions;
+ 
+    void Update();              // only runs during Active phase
+    void SpawnMinion();         // random X position at top of screen
+    public void DespawnAll();   // called on round end
+    public void SetSpawnInterval(float seconds);
+}
+```
+
+### `RoundUIManager` (client-side — not a NetworkSingleton)
+Observes NetworkVariables and switches UI panels:
+
+| Phase | UI shown |
+|---|---|
+| Waiting | Player slots with ready indicators, zone status strip |
+| Countdown | Large countdown number (5,4,3,2,1) |
+| Active | HUD: boss HP bars, ship HP bars, zone indicator, round timer |
+| Ended | "SHIPS WIN" or "BIRDS WIN", score summary |
+
+F4 key toggles tutorial overlay at any time, any phase. Tutorial shows all
+controls for all roles — purely local, no networking.
+
+### `CalloutManager` (NetworkSingleton — server fires, all clients display)
+```csharp
+public class CalloutManager : NetworkSingleton<CalloutManager>
+{
+    [ClientRpc]
+    public void ShowCalloutClientRpc(string text, float duration);
+}
+```
+
+Callout triggers:
+
+| Event | Text | Duration |
+|---|---|---|
+| Countdown 3,2,1 | "3" / "2" / "1" | 0.8s each |
+| Round start | "FIGHT!" | 1.5s |
+| Zone A entered | "SHIELD ACTIVATED" | 2s |
+| Zone A cooldown | "SHIELD COOLDOWN" | 2s |
+| Zone B entered | "TIME SLOW" | 2s |
+| Zone D entered | "FRENZY" | 2s |
+| Zone → normal | "NORMAL" | 1.5s |
+| Boss HP ≤ 25% | "BOSS CRITICAL" | 2s |
+| Ship destroyed | "SHIP DOWN" | 2s |
+| Shield broken | "SHIELD BROKEN" | 2s |
+| Minion surge | "MINION SURGE" | 2s |
+| Ship players win | "SHIPS WIN" | 8s |
+| Bird players win | "BIRDS WIN" | 8s |
+ 
+---
+
+## `IoTInputManager` Phase 3 Update
+
+Routes by `playerId` AND `inputName`. Phase guard unchanged.
+
+```csharp
+void Update()
+{
+    if (GameRoundManager.Instance.CurrentPhase.Value == RoundPhase.Waiting)
+    {
+        // Special case: ready-up inputs only
+        DrainReadyUpInputs();
+        return;
+    }
+    if (GameRoundManager.Instance.CurrentPhase.Value != RoundPhase.Active)
+        return;
+ 
+    DrainGameplayInputs();
+}
+ 
+void DrainGameplayInputs()
+{
+    while (IoTGameServiceImpl.InputQueue.TryDequeue(out var batch))
+        foreach (var evt in batch.Events)
+            RouteGameplayEvent(evt);
+}
+ 
+void RouteGameplayEvent(InputEventRequest evt)
+{
+    switch (evt.PlayerId)
+    {
+        case "player-1":
+        case "player-2":
+            RouteShipInput(evt); break;
+        case "player-3":
+        case "player-4":
+            RouteBirdInput(evt); break;
+        case "stage":
+            RouteStageInput(evt); break;
+    }
+}
+```
+
+### Ship input routing
+```csharp
+void RouteShipInput(InputEventRequest evt)
+{
+    var ship = BirdSpawnManager.Instance.GetShip(evt.PlayerId);
+    if (ship == null) return;
+    switch (evt.InputName)
+    {
+        case "move-x":  ship.SetJoystickX(evt.Value); break;  // -1 to 1 (0.5 = center)
+        case "move-y":  ship.SetJoystickY(evt.Value); break;
+        case "fire":    if (evt.EventType == "pressed") ship.Fire(); break;
+        case "special": break; // reserved
+    }
+}
+```
+
+### Bird input routing
+```csharp
+void RouteBirdInput(InputEventRequest evt)
+{
+    var bird = BirdSpawnManager.Instance.GetBossBird(evt.PlayerId);
+    if (bird == null) return;
+    if (evt.InputName == "flap" && evt.EventType == "pressed")
+        bird.Flap();
+}
+```
+
+### Stage input routing
+```csharp
+void RouteStageInput(InputEventRequest evt)
+{
+    if (evt.InputName == "pipe-flip" && evt.EventType == "pressed")
+        PipeSpawnManager.Instance?.FlipGap();
+}
+```
+ 
+---
+
+## `IoTGameServiceImpl` Phase 3 Update
+
+Now implements both `SendInputBatch` and `SendEnvironmentEvent`:
+
+```csharp
+public override Task<InputEventResponse> SendEnvironmentEvent(
+    EnvironmentEventRequest request, ServerCallContext context)
+{
+    // Enqueue to a separate environment queue — never touches Unity API here
+    EnvironmentQueue.Enqueue(new EnvironmentEvent {
+        EnvKey    = request.EnvKey,
+        RawValue  = request.RawValue,
+        Timestamp = request.Timestamp
+    });
+    return Task.FromResult(new InputEventResponse { Accepted = true });
+}
+ 
+public static ConcurrentQueue<EnvironmentEvent> EnvironmentQueue = new();
+```
+
+`EnvironmentController` drains `EnvironmentQueue` each `Update()` on main thread,
+same `ConcurrentQueue` threading pattern as `InputQueue`.
+
+Also implements `SendAdminCommand`:
+```csharp
+public override Task<AdminCommandResponse> SendAdminCommand(
+    AdminCommandRequest request, ServerCallContext context)
+{
+    AdminCommandQueue.Enqueue(request.Command);
+    return Task.FromResult(new AdminCommandResponse { Accepted = true });
+}
+ 
+public static ConcurrentQueue<string> AdminCommandQueue = new();
+```
+
+`GameRoundManager` drains `AdminCommandQueue` each `Update()`.
+ 
+---
+
+## Shield System Detail
+
+```csharp
+// On PlayerShip
+void TakeDamage(int amount)
+{
+    if (ShieldActive.Value && ShieldHealth.Value > 0)
+    {
+        int absorbed = Mathf.Min(amount, ShieldHealth.Value);
+        ShieldHealth.Value -= absorbed;
+        amount -= absorbed;
+        if (ShieldHealth.Value <= 0)
+        {
+            ShieldActive.Value = false;
+            CalloutManager.Instance.ShowCalloutClientRpc("SHIELD BROKEN", 2f);
+        }
+    }
+    if (amount > 0)
+        ShipHealth.Value -= amount;
+}
+ 
+// Shield recharge (in EnvironmentController)
+// When zone returns to A and cooldown elapsed: restore ShieldHealth to 50,
+// set ShieldActive = true on all ships that are still alive
+```
+ 
+---
+
+## Phase 3 Project Structure
+
+```
+Assets/Scripts/
+├── Players/
+│   ├── PlayerShip.cs           # New — ship NetworkBehaviour
+│   ├── BossEnemyBird.cs        # New — boss bird (reuses PlayerBird physics)
+│   ├── EnemyBird.cs            # New — server-controlled minion
+│   ├── Projectile.cs           # New — fired by PlayerShip
+│   └── PlayerDistinguisher.cs  # Unchanged
+├── Managers/
+│   ├── GameRoundManager.cs     # New — round lifecycle
+│   ├── EnvironmentController.cs# New — zone + temp effects
+│   ├── EnemySpawnManager.cs    # New — minion spawning
+│   ├── BirdSpawnManager.cs     # Updated — manages ships + boss birds
+│   ├── IoTInputManager.cs      # Updated — phase guard + role routing
+│   ├── CalloutManager.cs       # New — networked callout system
+│   ├── PipeSpawnManager.cs     # New (optional) — pipe barriers
+│   └── PlayerDistinguisherManager.cs # Unchanged
+├── UI/
+│   └── RoundUIManager.cs       # New — client-side UI phase switching
+├── Server/
+│   ├── ServerBootstrap.cs      # Updated — handles AdminCommandQueue
+│   ├── GrpcServerHost.cs       # Unchanged
+│   ├── IoTGameServiceImpl.cs   # Updated — SendEnvironmentEvent + SendAdminCommand
+│   └── ConnectionApprovalHandler.cs # Updated — validates 4 player roles
+└── Shared/
+    └── NetworkSingleton.cs     # Unchanged
+```
+ 
+---
+
+## Phase 3 Prefabs
+
+| Prefab | NetworkObject | Key components |
+|---|---|---|
+| `PlayerShip` | ✅ | `Rigidbody2D`, `PlayerShip`, `SpriteRenderer` |
+| `BossEnemyBird` | ✅ | `Rigidbody`, `BossEnemyBird`, `MeshRenderer` |
+| `EnemyBird` | ✅ | `Rigidbody`, `EnemyBird`, `MeshRenderer` |
+| `Projectile` | ✅ | `Rigidbody2D`, `Projectile` |
+| `PipeBarrier` | ✅ | `PipeBarrier`, two `BoxCollider2D` (upper + lower) |
+ 
+---
+
+## Phase 3 ConnectionApproval Update
+
+`ConnectionApprovalHandler` now validates four specific player roles:
+
+```csharp
+static readonly HashSet<string> ValidPlayerIds = new()
+    { "player-1", "player-2", "player-3", "player-4", "stage" };
+```
+
+On approval: `BirdSpawnManager` spawns the correct NetworkObject per role:
+- `player-1`, `player-2` → `PlayerShip` prefab
+- `player-3`, `player-4` → `BossEnemyBird` prefab
+- `stage` → no NetworkObject spawned (stage player has no avatar)

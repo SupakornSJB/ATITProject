@@ -1,13 +1,15 @@
+using System.Collections.Generic;
 using System.Text;
 using Unity.Netcode;
 using UnityEngine;
 
 namespace Server
 {
-    // Approves Unity spectator clients. Birds are now spawned from gRPC input,
-    // not from NGO client connections — any client with a valid payload is a spectator.
     public static class ConnectionApprovalHandler
     {
+        private static readonly HashSet<string> ValidPlayerIds = new()
+            { "player-1", "player-2", "player-3", "player-4", "stage" };
+
         public static void Register()
         {
             NetworkManager.Singleton.ConnectionApprovalCallback += Approve;
@@ -21,13 +23,24 @@ namespace Server
             try { clientLabel = Encoding.UTF8.GetString(request.Payload); }
             catch
             {
-                Reject(response, "Invalid payload");
+                Reject(response, "Invalid payload encoding");
                 return;
             }
 
             response.Approved = true;
             response.CreatePlayerObject = false;
-            Debug.Log($"[ConnectionApproval] Approved spectator: '{clientLabel}' (clientId={request.ClientNetworkId})");
+            Debug.Log($"[ConnectionApproval] Approved: '{clientLabel}' (clientId={request.ClientNetworkId})");
+
+            if (clientLabel == "stage")
+            {
+                Managers.PipeSpawnManager.Instance?.RegisterStageDevice();
+            }
+            else if (ValidPlayerIds.Contains(clientLabel))
+            {
+                // Spawn the player's NetworkObject immediately on connection.
+                // SpawnForPlayer is idempotent — safe to call again from IoTInputManager.
+                Managers.BirdSpawnManager.Instance?.SpawnForPlayer(clientLabel);
+            }
         }
 
         public static void ReleasePlayer(string playerId) { }
