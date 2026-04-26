@@ -51,6 +51,8 @@ namespace GameController.V2 {
     static readonly grpc::Marshaller<global::GameController.V2.InputEventResponse> __Marshaller_game_controller_v2_InputEventResponse = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::GameController.V2.InputEventResponse.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::GameController.V2.InputBatchRequest> __Marshaller_game_controller_v2_InputBatchRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::GameController.V2.InputBatchRequest.Parser));
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Marshaller<global::GameController.V2.EnvironmentEventRequest> __Marshaller_game_controller_v2_EnvironmentEventRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::GameController.V2.EnvironmentEventRequest.Parser));
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Method<global::GameController.V2.InputEventRequest, global::GameController.V2.InputEventResponse> __Method_SendInputEvent = new grpc::Method<global::GameController.V2.InputEventRequest, global::GameController.V2.InputEventResponse>(
@@ -66,6 +68,14 @@ namespace GameController.V2 {
         __ServiceName,
         "SendInputBatch",
         __Marshaller_game_controller_v2_InputBatchRequest,
+        __Marshaller_game_controller_v2_InputEventResponse);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::GameController.V2.EnvironmentEventRequest, global::GameController.V2.InputEventResponse> __Method_SendEnvironmentEvent = new grpc::Method<global::GameController.V2.EnvironmentEventRequest, global::GameController.V2.InputEventResponse>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "SendEnvironmentEvent",
+        __Marshaller_game_controller_v2_EnvironmentEventRequest,
         __Marshaller_game_controller_v2_InputEventResponse);
 
     /// <summary>Service descriptor</summary>
@@ -86,6 +96,12 @@ namespace GameController.V2 {
 
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
       public virtual global::System.Threading.Tasks.Task<global::GameController.V2.InputEventResponse> SendInputBatch(global::GameController.V2.InputBatchRequest request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::GameController.V2.InputEventResponse> SendEnvironmentEvent(global::GameController.V2.EnvironmentEventRequest request, grpc::ServerCallContext context)
       {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
@@ -159,6 +175,26 @@ namespace GameController.V2 {
       {
         return CallInvoker.AsyncUnaryCall(__Method_SendInputBatch, null, options, request);
       }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::GameController.V2.InputEventResponse SendEnvironmentEvent(global::GameController.V2.EnvironmentEventRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return SendEnvironmentEvent(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::GameController.V2.InputEventResponse SendEnvironmentEvent(global::GameController.V2.EnvironmentEventRequest request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_SendEnvironmentEvent, null, options, request);
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::GameController.V2.InputEventResponse> SendEnvironmentEventAsync(global::GameController.V2.EnvironmentEventRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return SendEnvironmentEventAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::GameController.V2.InputEventResponse> SendEnvironmentEventAsync(global::GameController.V2.EnvironmentEventRequest request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_SendEnvironmentEvent, null, options, request);
+      }
       /// <summary>Creates a new instance of client from given <c>ClientBaseConfiguration</c>.</summary>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
       protected override GameControllerServiceClient NewInstance(ClientBaseConfiguration configuration)
@@ -174,7 +210,8 @@ namespace GameController.V2 {
     {
       return grpc::ServerServiceDefinition.CreateBuilder()
           .AddMethod(__Method_SendInputEvent, serviceImpl.SendInputEvent)
-          .AddMethod(__Method_SendInputBatch, serviceImpl.SendInputBatch).Build();
+          .AddMethod(__Method_SendInputBatch, serviceImpl.SendInputBatch)
+          .AddMethod(__Method_SendEnvironmentEvent, serviceImpl.SendEnvironmentEvent).Build();
     }
 
     /// <summary>Register service method with a service binder with or without implementation. Useful when customizing the service binding logic.
@@ -186,6 +223,7 @@ namespace GameController.V2 {
     {
       serviceBinder.AddMethod(__Method_SendInputEvent, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::GameController.V2.InputEventRequest, global::GameController.V2.InputEventResponse>(serviceImpl.SendInputEvent));
       serviceBinder.AddMethod(__Method_SendInputBatch, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::GameController.V2.InputBatchRequest, global::GameController.V2.InputEventResponse>(serviceImpl.SendInputBatch));
+      serviceBinder.AddMethod(__Method_SendEnvironmentEvent, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::GameController.V2.EnvironmentEventRequest, global::GameController.V2.InputEventResponse>(serviceImpl.SendEnvironmentEvent));
     }
 
   }

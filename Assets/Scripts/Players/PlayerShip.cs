@@ -105,7 +105,7 @@ namespace Players
                 if (ShieldHealth.Value <= 0)
                 {
                     ShieldActive.Value = false;
-                    CalloutManager.Instance?.ShowCalloutClientRpc("SHIELD BROKEN", 2f);
+                    CalloutManager.Instance?.TryShowCallout("SHIELD BROKEN", 2f);
                 }
             }
             if (amount > 0)
@@ -113,7 +113,7 @@ namespace Players
                 ShipHealth.Value = Mathf.Max(0, ShipHealth.Value - amount);
                 if (ShipHealth.Value == 0)
                 {
-                    CalloutManager.Instance?.ShowCalloutClientRpc("SHIP DOWN", 2f);
+                    CalloutManager.Instance?.TryShowCallout("SHIP DOWN", 2f);
                     GameRoundManager.Instance?.CheckWinConditions();
                 }
             }

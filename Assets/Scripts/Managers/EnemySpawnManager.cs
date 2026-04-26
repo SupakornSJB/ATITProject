@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Players;
 using Shared;
 using Unity.Netcode;
 using UnityEngine;
@@ -13,11 +12,10 @@ namespace Managers
         [SerializeField] private float _spawnXMax = 5f;
         [SerializeField] private float _spawnY = 8f;
 
-        private float _spawnInterval = 5f;
+        // Base interval set by EnvironmentController via spawn_rate key.
+        // Zone D halves it on top; floor is always 1s.
+        private float _baseInterval = 5f;
         private float _spawnTimer;
-        private bool _frenzyActive;
-        private float _frenzyTimer;
-        private const float FrenzyDuration = 5f;
 
         private readonly List<NetworkObject> _liveMinions = new();
 
@@ -26,16 +24,8 @@ namespace Managers
             if (!IsServer) return;
             if (GameRoundManager.Instance?.CurrentPhase.Value != RoundPhase.Active) return;
 
-            if (_frenzyActive)
-            {
-                _frenzyTimer -= Time.deltaTime;
-                if (_frenzyTimer <= 0f)
-                    _frenzyActive = false;
-            }
-
-            float effectiveInterval = _frenzyActive
-                ? Mathf.Max(1f, _spawnInterval * 0.5f)
-                : _spawnInterval;
+            bool isZoneD = EnvironmentController.Instance?.UltrasonicZone.Value == 4;
+            float effectiveInterval = Mathf.Max(1f, _baseInterval * (isZoneD ? 0.5f : 1.0f));
 
             _spawnTimer -= Time.deltaTime;
             if (_spawnTimer <= 0f)
@@ -66,13 +56,7 @@ namespace Managers
 
         public void SetSpawnInterval(float seconds)
         {
-            _spawnInterval = Mathf.Max(1f, seconds);
-        }
-
-        public void TriggerFrenzy()
-        {
-            _frenzyActive = true;
-            _frenzyTimer = FrenzyDuration;
+            _baseInterval = Mathf.Max(1f, seconds);
         }
 
         public void RemoveMinion(NetworkObject netObj)

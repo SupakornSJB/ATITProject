@@ -17,13 +17,21 @@ namespace Players
         private void Awake()
         {
             _rb = GetComponent<Rigidbody>();
+            _rb.useGravity = false;
         }
 
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
-            if (IsServer)
-                _flapTimer = Random.Range(_flapIntervalMin, _flapIntervalMax);
+            if (!IsServer) return;
+            _flapTimer = Random.Range(_flapIntervalMin, _flapIntervalMax);
+            EnvironmentController.Instance?.RegisterGravityBody(_rb);
+        }
+
+        public override void OnNetworkDespawn()
+        {
+            if (IsServer) EnvironmentController.Instance?.UnregisterGravityBody(_rb);
+            base.OnNetworkDespawn();
         }
 
         private void FixedUpdate()
@@ -31,7 +39,6 @@ namespace Players
             if (!IsServer) return;
 
             float speed = EnvironmentController.Instance?.GlobalGameSpeed.Value ?? 1f;
-
             _flapTimer -= Time.fixedDeltaTime;
             if (_flapTimer <= 0f)
             {

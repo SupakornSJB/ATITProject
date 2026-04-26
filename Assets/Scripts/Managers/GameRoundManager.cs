@@ -87,19 +87,25 @@ namespace Managers
             if (sec != _lastCalloutSecond && sec >= 1 && sec <= 3)
             {
                 _lastCalloutSecond = sec;
-                CalloutManager.Instance?.ShowCalloutClientRpc(sec.ToString(), 0.8f);
+                CalloutManager.Instance?.TryShowCallout(sec.ToString(), 0.8f);
             }
         }
 
         private void CheckAllReady()
         {
-            if (Ship1Ready.Value && Ship2Ready.Value && Bird1Ready.Value && Bird2Ready.Value)
+            bool shipSideReady = Ship1Ready.Value || Ship2Ready.Value;
+            bool birdSideReady = Bird1Ready.Value || Bird2Ready.Value;
+            if (shipSideReady && birdSideReady)
                 TransitionTo(RoundPhase.Countdown);
         }
 
         public void CheckWinConditions()
         {
             if (!IsServer || CurrentPhase.Value != RoundPhase.Active) return;
+
+            var spawnMgr = BirdSpawnManager.Instance;
+            // Don't evaluate win conditions until at least one entity per side exists
+            if (spawnMgr == null || !spawnMgr.HasAnyShip() || !spawnMgr.HasAnyBossBird()) return;
 
             bool boss1Alive = IsBossAlive("player-3");
             bool boss2Alive = IsBossAlive("player-4");
@@ -108,13 +114,13 @@ namespace Managers
 
             if (!boss1Alive && !boss2Alive)
             {
-                CalloutManager.Instance?.ShowCalloutClientRpc("SHIPS WIN", 8f);
+                CalloutManager.Instance?.TryShowCallout("SHIPS WIN", 8f);
                 TransitionTo(RoundPhase.Ended);
                 return;
             }
             if (!ship1Alive && !ship2Alive)
             {
-                CalloutManager.Instance?.ShowCalloutClientRpc("BIRDS WIN", 8f);
+                CalloutManager.Instance?.TryShowCallout("BIRDS WIN", 8f);
                 TransitionTo(RoundPhase.Ended);
             }
         }
@@ -141,6 +147,7 @@ namespace Managers
             {
                 case RoundPhase.Waiting:
                     ResetReadyFlags();
+                    BirdSpawnManager.Instance?.DespawnAllPlayerEntities();
                     EnemySpawnManager.Instance?.DespawnAll();
                     PipeSpawnManager.Instance?.DespawnAll();
                     EnvironmentController.Instance?.ResetEffects();
@@ -155,7 +162,7 @@ namespace Managers
                 case RoundPhase.Active:
                     _phaseTimer = RoundDuration;
                     RoundTimer.Value = _phaseTimer;
-                    CalloutManager.Instance?.ShowCalloutClientRpc("FIGHT!", 1.5f);
+                    CalloutManager.Instance?.TryShowCallout("FIGHT!", 1.5f);
                     break;
 
                 case RoundPhase.Ended:
@@ -205,12 +212,12 @@ namespace Managers
 
             if (isShip && !IsShipAlive("player-1") && !IsShipAlive("player-2"))
             {
-                CalloutManager.Instance?.ShowCalloutClientRpc("BIRDS WIN", 8f);
+                CalloutManager.Instance?.TryShowCallout("BIRDS WIN", 8f);
                 TransitionTo(RoundPhase.Ended);
             }
             else if (isBird && !IsBossAlive("player-3") && !IsBossAlive("player-4"))
             {
-                CalloutManager.Instance?.ShowCalloutClientRpc("SHIPS WIN", 8f);
+                CalloutManager.Instance?.TryShowCallout("SHIPS WIN", 8f);
                 TransitionTo(RoundPhase.Ended);
             }
         }

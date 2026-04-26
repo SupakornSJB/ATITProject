@@ -1,7 +1,9 @@
+#if !UNITY_SERVER
 using System.Collections;
 using Managers;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace UI
@@ -29,6 +31,12 @@ namespace UI
         [SerializeField] private Slider _ship2HpBar;
         [SerializeField] private TextMeshProUGUI _roundTimerText;
         [SerializeField] private TextMeshProUGUI _zoneIndicatorText;
+
+        [Header("Stage Info Panel (visible any phase)")]
+        [SerializeField] private TextMeshProUGUI _temperatureText;
+        [SerializeField] private TextMeshProUGUI _humidityText;
+        [SerializeField] private TextMeshProUGUI _zoneDetailText;
+        [SerializeField] private TextMeshProUGUI _cooldownText;
 
         [Header("Callout")]
         [SerializeField] private TextMeshProUGUI _calloutText;
@@ -63,7 +71,7 @@ namespace UI
 
             UpdateHudValues(phase);
 
-            if (Input.GetKeyDown(KeyCode.F4) && _tutorialOverlay != null)
+            if (Keyboard.current != null && Keyboard.current.f4Key.wasPressedThisFrame && _tutorialOverlay != null)
                 _tutorialOverlay.SetActive(!_tutorialOverlay.activeSelf);
         }
 
@@ -93,6 +101,8 @@ namespace UI
                 UpdateHpBars();
                 UpdateZoneIndicator();
             }
+
+            UpdateStageInfo();
         }
 
         private void SetReadyColor(Image img, bool ready)
@@ -133,6 +143,40 @@ namespace UI
             };
         }
 
+        private void UpdateStageInfo()
+        {
+            var env = EnvironmentController.Instance;
+            if (env == null) return;
+
+            if (_temperatureText != null)
+            {
+                float g = env.GlobalGravity.Value;
+                _temperatureText.text = $"Gravity: {g:F1}  ({env.Temperature.Value:F1}°C)";
+            }
+
+            if (_humidityText != null)
+            {
+                float h = env.Humidity.Value;
+                string rate = h >= 70f ? "fast" : h >= 50f ? "normal" : "slow";
+                _humidityText.text = $"Spawn rate: {rate}  ({h:F0}% humid)";
+            }
+
+            if (_zoneDetailText != null)
+            {
+                int zone = env.UltrasonicZone.Value;
+                string zoneLabel = zone == 1 ? "Zone A — SHIELD" :
+                                   zone == 2 ? "Zone B — TIME SLOW" :
+                                   zone == 4 ? "Zone D — FRENZY" : "Zone C — Normal";
+                _zoneDetailText.text = $"Zone: {zoneLabel}";
+            }
+
+            if (_cooldownText != null)
+            {
+                float cd = env.GetCooldownRemaining();
+                _cooldownText.text = cd > 0f ? $"Cooldown: {cd:F0}s" : "Ready";
+            }
+        }
+
         public void ShowCallout(string text, float duration)
         {
             if (_calloutCoroutine != null)
@@ -149,3 +193,4 @@ namespace UI
         }
     }
 }
+#endif

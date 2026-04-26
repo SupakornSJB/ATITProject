@@ -75,7 +75,7 @@ namespace Managers
             netObj.Spawn();
             var boss = go.GetComponent<BossEnemyBird>();
             boss.BossColor.Value = PlayerDistinguisherManager.Instance.RequestColor(playerId);
-            boss.Init(playerId);
+            boss.Init(playerId, pos);
             _bossBirds[playerId] = netObj;
             Debug.Log($"[BirdSpawnManager] Spawned boss bird for '{playerId}'");
         }
@@ -130,6 +130,23 @@ namespace Managers
         {
             TryGetBossBird(playerId, out var boss);
             return boss;
+        }
+
+        public bool HasAnyShip()     => _ships.Count > 0;
+        public bool HasAnyBossBird() => _bossBirds.Count > 0;
+
+        // Called on round reset — despawns all player-owned entities so the next round
+        // starts clean with fresh spawns at correct positions.
+        public void DespawnAllPlayerEntities()
+        {
+            if (!IsServer) return;
+            foreach (var netObj in _ships.Values)
+                if (netObj != null && netObj.IsSpawned) netObj.Despawn();
+            _ships.Clear();
+
+            foreach (var netObj in _bossBirds.Values)
+                if (netObj != null && netObj.IsSpawned) netObj.Despawn();
+            _bossBirds.Clear();
         }
 
         // Phase 2 backward compat stubs

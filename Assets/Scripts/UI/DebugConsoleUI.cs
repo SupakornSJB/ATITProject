@@ -1,3 +1,4 @@
+#if !UNITY_SERVER
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -27,3 +28,4 @@ namespace UI
         }
     }
 }
+#endif

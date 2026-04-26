@@ -115,7 +115,9 @@ namespace Managers
         [ClientRpc]
         private void NotifyInputClientRpc(string playerId, string inputName, string eventType, float value)
         {
+#if !UNITY_SERVER
             UI.DebugConsoleUI.Instance?.AddMessage($"{playerId} | {inputName} | {eventType} | {value:F2}");
+#endif
         }
     }
 }

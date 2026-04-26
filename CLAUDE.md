@@ -9,6 +9,7 @@ Read these before starting work — they contain decisions made, problems hit, a
 - [`Updates/2026-04-24-session.md`](Updates/2026-04-24-session.md) — Initial implementation session; gRPC DLL setup journey; switched from Grpc.AspNetCore to Grpc.Core; unsolved: `grpc_csharp_ext` DllNotFoundException in server build
 - [`Updates/2026-04-24-session2.md`](Updates/2026-04-24-session2.md) — Phase 1 confirmed working end-to-end; Phase 2 implemented: multi-input proto v2, PlayerInputState, PlayerInputStateRegistry, batched input delivery, HorizontalSpeed NetworkVariable
 - [`Updates/2026-04-25-session.md`](Updates/2026-04-25-session.md) — Death detection (Y-position check); in-game debug console UI with ClientRpc; architecture shift to server-owned birds (no Unity client required per player); Phase 2.1 log format only
+- [`Updates/2026-04-27-session.md`](Updates/2026-04-27-session.md) — Phase 3 full implementation (space shooter); Phase 3.1 humidity; Phase 3.2 gravity/spawn-rate swap; protoc fix for SendEnvironmentEvent; first play test debugging (CalloutManager crash, false win condition, boss falling too fast, round reset leaving stale entities)
 
 ## What This Project Is
 
@@ -1053,3 +1054,125 @@ On approval: `BirdSpawnManager` spawns the correct NetworkObject per role:
 - `player-1`, `player-2` → `PlayerShip` prefab
 - `player-3`, `player-4` → `BossEnemyBird` prefab
 - `stage` → no NetworkObject spawned (stage player has no avatar)
+
+# Phase 3.1 — Protocol Fix: Auxiliary Field for Multi-Output Sensors
+
+## What Changed in Phase 3.1
+
+Phase 3 had no mechanism for DHT11 to deliver both temperature and humidity —
+humidity was silently discarded. Phase 3.1 adds an optional `auxiliary` map to
+all three gRPC message types. Unity receives humidity as a separate
+`EnvironmentEventRequest` (resolved server-side from the auxiliary field) — no
+Unity-side changes are needed to handle the routing. The only Unity changes are:
+
+1. Updated proto stubs (regenerate from updated `.proto`)
+2. `EnvironmentController` now handles `"humidity"` env key
+3. `EnvironmentState` gains a `Humidity` NetworkVariable
+---
+
+## Proto Update (Additive — Regenerate Stubs)
+
+`auxiliary` added as optional field to all three request messages. Regenerate:
+
+```bash
+protoc --csharp_out=Assets/Scripts/Generated \
+       --grpc_out=Assets/Scripts/Generated \
+       --plugin=protoc-gen-grpc=grpc_csharp_plugin \
+       Proto/game_controller_v2.proto
+```
+
+The generated stubs are backward compatible — existing code referencing
+`InputEventRequest`, `EnvironmentEventRequest`, and `AdminCommandRequest`
+continues to compile without changes. `auxiliary` is simply a new optional
+field that existing code ignores.
+ 
+---
+
+## `auxiliary` Convention in Unity
+
+Unity receives `auxiliary` on all three message types but has a strict rule:
+
+> **Never require `auxiliary`.** Game logic must function correctly when
+> `auxiliary` is empty. Only `EnvironmentController` actively reads `auxiliary`
+> content — `IoTInputManager` and `GameRoundManager` ignore it entirely.
+
+For `InputEventRequest` and `AdminCommandRequest`, `auxiliary` is reserved and
+ignored in all current Unity code. Do not add logic that depends on it without
+a documented protocol change.
+ 
+---
+
+## `EnvironmentController` Phase 3.1 Update
+
+`OnEnvironmentUpdate()` now handles `"humidity"` env key in addition to
+`"temperature"` and `"ultrasonic_zone"`. The ASP.NET server unpacks DHT11
+auxiliary values and sends two separate `EnvironmentEventRequest` calls —
+one for temperature, one for humidity. Unity receives them as independent
+events and does not need to know they originated from the same physical sensor.
+
+```csharp
+public void OnEnvironmentUpdate(string envKey, float value)
+{
+    switch (envKey)
+    {
+        case "temperature":
+            Temperature.Value = value;
+            ApplyTemperatureEffects();
+            break;
+ 
+        case "humidity":
+            Humidity.Value = value;
+            // currently informational only — displayed in stage player UI
+            // reserved for future game mechanic
+            break;
+ 
+        case "ultrasonic_zone":
+            int zone = Mathf.RoundToInt(value);
+            if (zone == UltrasonicZone.Value) break;
+            UltrasonicZone.Value = zone;
+            ApplyZoneEffects(zone);
+            FireZoneCallout(zone);
+            break;
+    }
+}
+```
+ 
+---
+
+## `EnvironmentState` NetworkVariables Update
+
+```csharp
+public class EnvironmentController : NetworkSingleton<EnvironmentController>
+{
+    public NetworkVariable<float> Temperature;     // raw Celsius
+    public NetworkVariable<float> Humidity;        // percentage 0–100 — new in 3.1
+    public NetworkVariable<int>   UltrasonicZone;  // 1–4
+    public NetworkVariable<float> GlobalGameSpeed; // 1.0 default
+    public NetworkVariable<int>   ActiveZoneEffect;
+    // cooldown timestamps — server-only, not NetworkVariables
+}
+```
+
+`Humidity` is replicated to all clients so the stage player UI can display it.
+No game mechanic currently uses humidity — it is informational only and reserved
+for a future phase. This is intentional: the data is available, the effect is
+not yet defined.
+ 
+---
+
+## Stage Player UI Update (`RoundUIManager`)
+
+The stage player display panel now shows all three environmental readings:
+
+```
+┌─────────────────────────────┐
+│  STAGE CONTROL              │
+│  Temp:     28.5°C           │
+│  Humidity: 65%    ← new     │
+│  Zone:     2 — TIME SLOW    │
+│  Cooldown: 14s remaining    │
+└─────────────────────────────┘
+```
+
+Humidity displayed as informational only — no effect label shown since no
+mechanic is currently attached. Label reads "Humidity: X%" with no annotation.

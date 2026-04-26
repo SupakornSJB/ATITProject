@@ -4,6 +4,16 @@
 > is unchanged. See [`Setup/UNITY_SETUP_PHASE_1_2.md`](Setup/UNITY_SETUP_PHASE_1_2.md) for
 > that one-time setup. This document covers only the new Phase 3 additions.
 
+## Phase 3.1 changes (apply on top of Phase 3)
+
+- **Env key rename (bug fix):** The ASP.NET server now sends `"ultrasonic_zone"` (not `"zone"`).
+  No Unity change needed — `EnvironmentController` was updated to match.
+- **Humidity NetworkVariable added** to `EnvironmentController` — replicated to all clients.
+- **Stage Info Panel** — four new optional TMP fields on `RoundUIManager`:
+  `Temperature Text`, `Humidity Text`, `Zone Detail Text`, `Cooldown Text`.
+  Create child TMP text objects in a persistent `StageInfoPanel` (always visible, any phase)
+  and wire them in the Inspector. Leave unwired if you don't need the stage display.
+
 ---
 
 ## 1. New Prefabs

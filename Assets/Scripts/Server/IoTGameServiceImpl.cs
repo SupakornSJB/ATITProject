@@ -37,6 +37,19 @@ namespace Server
             return Task.FromResult(new InputEventResponse { Accepted = true, Message = "ok" });
         }
 
+        public override Task<InputEventResponse> SendEnvironmentEvent(
+            EnvironmentEventRequest request, ServerCallContext context)
+        {
+            EnvironmentQueue.Enqueue(new EnvironmentEvent
+            {
+                EnvKey    = request.EnvKey,
+                RawValue  = request.RawValue,
+                Timestamp = request.Timestamp
+            });
+            Console.WriteLine($"[IoTGameServiceImpl] EnvironmentEvent — key={request.EnvKey} value={request.RawValue}");
+            return Task.FromResult(new InputEventResponse { Accepted = true, Message = "ok" });
+        }
+
         public override Task<InputEventResponse> SendInputBatch(
             InputBatchRequest request, ServerCallContext context)
         {

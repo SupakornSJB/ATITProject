@@ -5,15 +5,16 @@ option csharp_namespace = "GameController.V2";
 package game_controller.v2;
 
 service GameControllerService {
-  rpc SendInputEvent (InputEventRequest)  returns (InputEventResponse);
-  rpc SendInputBatch (InputBatchRequest)  returns (InputEventResponse);
+  rpc SendInputEvent        (InputEventRequest)       returns (InputEventResponse);
+  rpc SendInputBatch        (InputBatchRequest)        returns (InputEventResponse);
+  rpc SendEnvironmentEvent  (EnvironmentEventRequest)  returns (InputEventResponse);
 }
 
 message InputEventRequest {
   string player_id       = 1;
   string device_id       = 2;
   string input_name      = 3;
-  string input_type      = 4;  // "button", "knob", "sensor"
+  string input_type      = 4;  // "button", "knob", "sensor", "environment", "admin"
   string event_type      = 5;  // "pressed", "released", "change"
   float  value           = 6;  // always normalized 0.0-1.0
   int64  timestamp       = 7;
@@ -22,6 +23,15 @@ message InputEventRequest {
 
 message InputBatchRequest {
   repeated InputEventRequest events = 1;
+}
+
+// Sent by ASP.NET for DHT11 and HC-SR04 sensor readings.
+// env_key is a semantic label resolved server-side — Unity never sees raw sensor names.
+// Known keys: "gravity" (DHT11 temp), "spawn_rate" (DHT11 humidity), "ultrasonic_zone" (HC-SR04)
+message EnvironmentEventRequest {
+  string env_key   = 1;
+  float  raw_value = 2;
+  int64  timestamp = 3;
 }
 
 message InputEventResponse {

@@ -30,19 +30,24 @@ namespace GameController.V2 {
             "X3R5cGUYBCABKAkSEgoKZXZlbnRfdHlwZRgFIAEoCRINCgV2YWx1ZRgGIAEo",
             "AhIRCgl0aW1lc3RhbXAYByABKAMSFwoPc2VxdWVuY2VfbnVtYmVyGAggASgD",
             "IkoKEUlucHV0QmF0Y2hSZXF1ZXN0EjUKBmV2ZW50cxgBIAMoCzIlLmdhbWVf",
-            "Y29udHJvbGxlci52Mi5JbnB1dEV2ZW50UmVxdWVzdCI3ChJJbnB1dEV2ZW50",
-            "UmVzcG9uc2USEAoIYWNjZXB0ZWQYASABKAgSDwoHbWVzc2FnZRgCIAEoCTLZ",
-            "AQoVR2FtZUNvbnRyb2xsZXJTZXJ2aWNlEl8KDlNlbmRJbnB1dEV2ZW50EiUu",
-            "Z2FtZV9jb250cm9sbGVyLnYyLklucHV0RXZlbnRSZXF1ZXN0GiYuZ2FtZV9j",
-            "b250cm9sbGVyLnYyLklucHV0RXZlbnRSZXNwb25zZRJfCg5TZW5kSW5wdXRC",
-            "YXRjaBIlLmdhbWVfY29udHJvbGxlci52Mi5JbnB1dEJhdGNoUmVxdWVzdBom",
-            "LmdhbWVfY29udHJvbGxlci52Mi5JbnB1dEV2ZW50UmVzcG9uc2VCFKoCEUdh",
-            "bWVDb250cm9sbGVyLlYyYgZwcm90bzM="));
+            "Y29udHJvbGxlci52Mi5JbnB1dEV2ZW50UmVxdWVzdCJQChdFbnZpcm9ubWVu",
+            "dEV2ZW50UmVxdWVzdBIPCgdlbnZfa2V5GAEgASgJEhEKCXJhd192YWx1ZRgC",
+            "IAEoAhIRCgl0aW1lc3RhbXAYAyABKAMiNwoSSW5wdXRFdmVudFJlc3BvbnNl",
+            "EhAKCGFjY2VwdGVkGAEgASgIEg8KB21lc3NhZ2UYAiABKAkyxgIKFUdhbWVD",
+            "b250cm9sbGVyU2VydmljZRJfCg5TZW5kSW5wdXRFdmVudBIlLmdhbWVfY29u",
+            "dHJvbGxlci52Mi5JbnB1dEV2ZW50UmVxdWVzdBomLmdhbWVfY29udHJvbGxl",
+            "ci52Mi5JbnB1dEV2ZW50UmVzcG9uc2USXwoOU2VuZElucHV0QmF0Y2gSJS5n",
+            "YW1lX2NvbnRyb2xsZXIudjIuSW5wdXRCYXRjaFJlcXVlc3QaJi5nYW1lX2Nv",
+            "bnRyb2xsZXIudjIuSW5wdXRFdmVudFJlc3BvbnNlEmsKFFNlbmRFbnZpcm9u",
+            "bWVudEV2ZW50EisuZ2FtZV9jb250cm9sbGVyLnYyLkVudmlyb25tZW50RXZl",
+            "bnRSZXF1ZXN0GiYuZ2FtZV9jb250cm9sbGVyLnYyLklucHV0RXZlbnRSZXNw",
+            "b25zZUIUqgIRR2FtZUNvbnRyb2xsZXIuVjJiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::GameController.V2.InputEventRequest), global::GameController.V2.InputEventRequest.Parser, new[]{ "PlayerId", "DeviceId", "InputName", "InputType", "EventType", "Value", "Timestamp", "SequenceNumber" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::GameController.V2.InputBatchRequest), global::GameController.V2.InputBatchRequest.Parser, new[]{ "Events" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::GameController.V2.EnvironmentEventRequest), global::GameController.V2.EnvironmentEventRequest.Parser, new[]{ "EnvKey", "RawValue", "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::GameController.V2.InputEventResponse), global::GameController.V2.InputEventResponse.Parser, new[]{ "Accepted", "Message" }, null, null, null, null)
           }));
     }
@@ -142,7 +147,7 @@ namespace GameController.V2 {
     public const int InputTypeFieldNumber = 4;
     private string inputType_ = "";
     /// <summary>
-    /// "button", "knob", "sensor"
+    /// "button", "knob", "sensor", "environment", "admin"
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -703,6 +708,283 @@ namespace GameController.V2 {
 
   }
 
+  /// <summary>
+  /// Sent by ASP.NET for DHT11 and HC-SR04 sensor readings.
+  /// env_key is a semantic label resolved server-side — Unity never sees raw sensor names.
+  /// Known keys: "gravity" (DHT11 temp), "spawn_rate" (DHT11 humidity), "ultrasonic_zone" (HC-SR04)
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class EnvironmentEventRequest : pb::IMessage<EnvironmentEventRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<EnvironmentEventRequest> _parser = new pb::MessageParser<EnvironmentEventRequest>(() => new EnvironmentEventRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<EnvironmentEventRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::GameController.V2.GameControllerV2Reflection.Descriptor.MessageTypes[2]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public EnvironmentEventRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public EnvironmentEventRequest(EnvironmentEventRequest other) : this() {
+      envKey_ = other.envKey_;
+      rawValue_ = other.rawValue_;
+      timestamp_ = other.timestamp_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public EnvironmentEventRequest Clone() {
+      return new EnvironmentEventRequest(this);
+    }
+
+    /// <summary>Field number for the "env_key" field.</summary>
+    public const int EnvKeyFieldNumber = 1;
+    private string envKey_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string EnvKey {
+      get { return envKey_; }
+      set {
+        envKey_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "raw_value" field.</summary>
+    public const int RawValueFieldNumber = 2;
+    private float rawValue_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float RawValue {
+      get { return rawValue_; }
+      set {
+        rawValue_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "timestamp" field.</summary>
+    public const int TimestampFieldNumber = 3;
+    private long timestamp_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public long Timestamp {
+      get { return timestamp_; }
+      set {
+        timestamp_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as EnvironmentEventRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(EnvironmentEventRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (EnvKey != other.EnvKey) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(RawValue, other.RawValue)) return false;
+      if (Timestamp != other.Timestamp) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (EnvKey.Length != 0) hash ^= EnvKey.GetHashCode();
+      if (RawValue != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(RawValue);
+      if (Timestamp != 0L) hash ^= Timestamp.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (EnvKey.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(EnvKey);
+      }
+      if (RawValue != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(RawValue);
+      }
+      if (Timestamp != 0L) {
+        output.WriteRawTag(24);
+        output.WriteInt64(Timestamp);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (EnvKey.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(EnvKey);
+      }
+      if (RawValue != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(RawValue);
+      }
+      if (Timestamp != 0L) {
+        output.WriteRawTag(24);
+        output.WriteInt64(Timestamp);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (EnvKey.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(EnvKey);
+      }
+      if (RawValue != 0F) {
+        size += 1 + 4;
+      }
+      if (Timestamp != 0L) {
+        size += 1 + pb::CodedOutputStream.ComputeInt64Size(Timestamp);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(EnvironmentEventRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.EnvKey.Length != 0) {
+        EnvKey = other.EnvKey;
+      }
+      if (other.RawValue != 0F) {
+        RawValue = other.RawValue;
+      }
+      if (other.Timestamp != 0L) {
+        Timestamp = other.Timestamp;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            EnvKey = input.ReadString();
+            break;
+          }
+          case 21: {
+            RawValue = input.ReadFloat();
+            break;
+          }
+          case 24: {
+            Timestamp = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            EnvKey = input.ReadString();
+            break;
+          }
+          case 21: {
+            RawValue = input.ReadFloat();
+            break;
+          }
+          case 24: {
+            Timestamp = input.ReadInt64();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class InputEventResponse : pb::IMessage<InputEventResponse>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
@@ -718,7 +1000,7 @@ namespace GameController.V2 {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::GameController.V2.GameControllerV2Reflection.Descriptor.MessageTypes[2]; }
+      get { return global::GameController.V2.GameControllerV2Reflection.Descriptor.MessageTypes[3]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
