@@ -21,8 +21,7 @@ namespace Players
 
         private void GetColorForPlayer()
         {
-            if (!IsOwner || IsClient) return;
-            _color.Value = PlayerDistinguisherManager.Instance.RequestColor();
+            // Color is assigned externally by BirdSpawnManager via PlayerBird.PlayerColor
         }
         
         private void SetColor(Color _, Color newColor)

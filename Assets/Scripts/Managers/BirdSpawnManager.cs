@@ -34,7 +34,7 @@ namespace Managers
         {
             if (_spawnPositions.ContainsKey(playerId)) return;
             _spawnPositions[playerId] = new Vector3(_spawnIndex * 2f, 0f, 0f);
-            _playerColors[playerId] = PlayerDistinguisherManager.Instance.RequestColor();
+            _playerColors[playerId] = PlayerDistinguisherManager.Instance.RequestColor(playerId);
             _spawnIndex++;
             Debug.Log($"[BirdSpawnManager] Allocated slot for '{playerId}'");
         }
