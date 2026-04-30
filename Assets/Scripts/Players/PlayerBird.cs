@@ -85,7 +85,7 @@ namespace Players
         {
             if (!IsServer) return;
             Debug.Log($"[PlayerBird] '{_playerId}' hit the barrier");
-            Managers.BirdSpawnManager.Instance.HandleBirdDeath(_playerId);
+            Managers.BirdSpawnManager.Instance.HandleShipDeath(_playerId);
         }
 
         private void FixedUpdate()

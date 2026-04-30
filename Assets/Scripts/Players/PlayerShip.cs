@@ -1,3 +1,4 @@
+using System.Collections;
 using Managers;
 using Unity.Netcode;
 using UnityEngine;
@@ -8,13 +9,14 @@ namespace Players
     {
         [SerializeField] private float _moveSpeed = 5f;
         [SerializeField] private GameObject _projectilePrefab;
-        [SerializeField] private int _maxLiveProjectiles = 3;
+        [SerializeField] private float _projectileSpeed = 12f;
+        [SerializeField] private float _fireCooldown = 0.15f;
 
         private Rigidbody _rb;
         private MeshRenderer _meshRenderer;
         private string _playerId;
         private Vector2 _joystickInput;
-        private int _liveProjectileCount;
+        private float _lastFireTime = -999f;
 
         public NetworkVariable<int> ShipHealth = new(
             100,
@@ -33,6 +35,11 @@ namespace Players
 
         public NetworkVariable<Color> ShipColor = new(
             Color.white,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        public NetworkVariable<int> PlayerIndex = new(
+            0,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
@@ -58,6 +65,7 @@ namespace Players
         public void Init(string playerId)
         {
             _playerId = playerId;
+            PlayerIndex.Value = playerId == "player-1" ? 1 : 2;
         }
 
         // value is 0–1 normalized; 0.5 = center dead-zone maps to 0 velocity
@@ -76,22 +84,47 @@ namespace Players
         public void Fire()
         {
             if (!IsServer) return;
-            if (GameRoundManager.Instance?.CurrentPhase.Value != RoundPhase.Active) return;
-            if (_liveProjectileCount >= _maxLiveProjectiles) return;
-            if (_projectilePrefab == null) return;
+            if (GameSessionManager.Instance?.CurrentPhase.Value != SessionPhase.Active) return;
+            if (Time.time - _lastFireTime < _fireCooldown) return;
+            _lastFireTime = Time.time;
 
-            var pos = transform.position + Vector3.up * 0.6f;
-            var go = Instantiate(_projectilePrefab, pos, Quaternion.identity);
-            var netObj = go.GetComponent<NetworkObject>();
-            netObj.Spawn();
-            go.GetComponent<Projectile>()?.Init(this);
-            _liveProjectileCount++;
+            var firePos = transform.position + Vector3.right * 0.6f;
+
+            // Server: simulate projectile traveling right, OverlapSphere each frame
+            StartCoroutine(SimulateProjectile(firePos));
+
+            // All clients: spawn visual projectile
+            SpawnProjectileClientRpc(firePos);
         }
 
-        public void OnProjectileDestroyed()
+        private IEnumerator SimulateProjectile(Vector3 pos)
         {
-            if (!IsServer) return;
-            _liveProjectileCount = Mathf.Max(0, _liveProjectileCount - 1);
+            float despawnX = 14f;
+            while (pos.x < despawnX)
+            {
+                float speed = _projectileSpeed * (EnvironmentController.Instance?.GlobalGameSpeed.Value ?? 1f);
+                pos += Vector3.right * speed * Time.fixedDeltaTime;
+
+                var hits = Physics.OverlapSphere(pos, 0.3f);
+                foreach (var hit in hits)
+                {
+                    var enemy = hit.GetComponentInParent<EnemyBird>();
+                    if (enemy != null && enemy.IsSpawned)
+                    {
+                        EnemySpawnManager.Instance?.RemoveMinion(enemy.GetComponent<NetworkObject>());
+                        enemy.GetComponent<NetworkObject>()?.Despawn();
+                        yield break;
+                    }
+                }
+                yield return new WaitForFixedUpdate();
+            }
+        }
+
+        [ClientRpc]
+        private void SpawnProjectileClientRpc(Vector3 startPos)
+        {
+            if (_projectilePrefab == null) return;
+            Instantiate(_projectilePrefab, startPos, Quaternion.identity);
         }
 
         public void TakeDamage(int amount)
@@ -114,7 +147,8 @@ namespace Players
                 if (ShipHealth.Value == 0)
                 {
                     CalloutManager.Instance?.TryShowCallout("SHIP DOWN", 2f);
-                    GameRoundManager.Instance?.CheckWinConditions();
+                    GameSessionManager.Instance?.CheckWinConditions();
+                    BirdSpawnManager.Instance?.HandleShipDeath(_playerId);
                 }
             }
         }

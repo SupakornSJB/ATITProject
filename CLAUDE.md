@@ -1176,3 +1176,355 @@ The stage player display panel now shows all three environmental readings:
 
 Humidity displayed as informational only — no effect label shown since no
 mechanic is currently attached. Label reads "Humidity: X%" with no annotation.
+
+---
+
+# Phase 3.3 — Infrastructure Fix: gRPC Connection Stability
+
+## What Changed in Phase 3.3
+
+No Unity changes. Keep-alive and reconnection logic is handled entirely in the
+ASP.NET server's `UnityRelayService`. Kestrel on the Unity side responds to
+HTTP/2 PING frames automatically — no configuration needed here.
+
+ 
+---
+ 
+---
+
+# Phase 4 — Library Foundation
+
+## What Changed in Phase 4
+
+Phase 4 restructures Unity into a clear library/game separation, formalises
+the developer-facing API surface, documents the spectator-only client model,
+and adds shared secret validation on incoming gRPC calls.
+ 
+---
+
+## Architectural Decision: All Unity Clients Are Spectators
+
+Unity game clients have no player identity. They connect to the dedicated server
+and receive replicated game state — they do not control any player object.
+All player input comes exclusively from physical ESP32 devices via the
+ASP.NET → gRPC pipeline.
+
+**Consequences:**
+- `ConnectionApprovalHandler` approves all connecting clients unconditionally
+- No `playerId` required in the NGO approval payload
+- All `PlayerShip`, `BossEnemyBird`, and `EnemyBird` NetworkObjects are
+  server-owned — no client ever owns a NetworkObject
+- Remove all `IsOwner` checks from player NetworkBehaviours —
+  they are always server-authoritative
+- Multiple clients can connect and all see an identical game view
+  **Optional display preference:**
+  A client may optionally send a `preferredPlayerId` string in the approval
+  payload for UI highlighting purposes only — not for auth or control:
+
+```csharp
+// Client-side — optional
+var payload = preferredPlayerId != null
+    ? Encoding.UTF8.GetBytes($"spectator:{preferredPlayerId}")
+    : Encoding.UTF8.GetBytes("spectator");
+ 
+NetworkManager.Singleton.NetworkConfig.ConnectionData = payload;
+NetworkManager.Singleton.StartClient();
+```
+
+`RoundUIManager` reads `preferredPlayerId` if present and highlights that
+player's health bar. If absent, all health bars are displayed with equal weight.
+This is purely a client-side display concern — no server logic changes.
+ 
+---
+
+## Architectural Decision: Source Library
+
+The Unity library code lives in `Assets/IoTGame/` and should not be modified.
+Developers write their game code in `Assets/Game/`. The boundary is enforced
+by Unity Assembly Definitions (`.asmdef`):
+
+- `IoTGame.Core.asmdef` — library assembly, no game dependencies
+- `IoTGame.Game.asmdef` — game assembly, references `IoTGame.Core`
+---
+
+## Phase 4 Folder Structure
+
+```
+Assets/
+├── IoTGame/                               ← LIBRARY — do not modify
+│   ├── IoTGame.Core.asmdef
+│   ├── Core/
+│   │   ├── IoTGameServer.cs               ← static facade — developer entry point
+│   │   ├── GrpcServerHost.cs              ← Kestrel host, background thread
+│   │   ├── IoTGameServiceImpl.cs          ← gRPC service, ConcurrentQueues
+│   │   └── IoTInputDispatcher.cs          ← MonoBehaviour, main thread drain
+│   ├── Abstractions/
+│   │   ├── IoTGamePlayerController.cs     ← abstract base for player objects
+│   │   └── IoTGameEnvironmentController.cs ← abstract base for env controller
+│   ├── Models/
+│   │   ├── IoTInputEvent.cs
+│   │   ├── EnvironmentEvent.cs
+│   │   └── AdminCommand.cs
+│   └── Generated/                         ← proto stubs — do not modify
+│       ├── GameController.cs
+│       └── GameControllerGrpc.cs
+│
+└── Game/                                  ← DEVELOPER CODE — modify freely
+    ├── IoTGame.Game.asmdef
+    ├── Players/
+    │   ├── PlayerShip.cs                  ← extends IoTGamePlayerController
+    │   ├── BossEnemyBird.cs               ← extends IoTGamePlayerController
+    │   ├── EnemyBird.cs                   ← server-controlled, no base class
+    │   └── Projectile.cs
+    ├── Managers/
+    │   ├── GameRoundManager.cs
+    │   ├── BirdSpawnManager.cs
+    │   ├── EnemySpawnManager.cs
+    │   ├── CalloutManager.cs
+    │   └── PipeSpawnManager.cs            ← optional
+    ├── Environment/
+    │   └── EnvironmentController.cs       ← extends IoTGameEnvironmentController
+    └── UI/
+        └── RoundUIManager.cs
+```
+ 
+---
+
+## Public Library API (`IoTGameServer.cs`)
+
+The only class developers interact with directly. Everything else in
+`Assets/IoTGame/` is internal to the library assembly.
+
+```csharp
+public static class IoTGameServer
+{
+    // Initialize — call once in Start() after NetworkManager.Singleton.StartServer()
+    // secret must match IoTGame:SharedSecret in ASP.NET appsettings.json
+    public static void Initialize(int grpcPort = 9090, string secret = "");
+ 
+    // Shutdown — call in OnDestroy()
+    public static void Shutdown();
+ 
+    // Status
+    public static bool IsRunning { get; }
+ 
+    // Events — all fired on Unity main thread, safe to call NGO APIs inside handlers
+    public static event Action<IoTInputEvent>    OnInputReceived;
+    public static event Action<EnvironmentEvent> OnEnvironmentUpdate;
+    public static event Action<AdminCommand>     OnAdminCommand;
+}
+```
+
+### Event Models
+
+```csharp
+public record IoTInputEvent(
+    string PlayerId,
+    string InputName,
+    string InputType,
+    string EventType,   // "pressed", "released", "change"
+    float  Value,
+    long   Timestamp,
+    long   SequenceNumber,
+    IReadOnlyDictionary<string, float> Auxiliary
+);
+ 
+public record EnvironmentEvent(
+    string EnvKey,      // "gravity", "spawn_rate", "ultrasonic_zone"
+    float  RawValue,
+    long   Timestamp,
+    IReadOnlyDictionary<string, float> Auxiliary
+);
+ 
+public record AdminCommand(
+    string Command,     // "session_start", "end_round", "reset" etc.
+    string IssuedBy,
+    long   Timestamp,
+    IReadOnlyDictionary<string, float> Auxiliary  // session config parameters
+);
+```
+ 
+---
+
+## Abstract Base Classes
+
+Developers extend these for player and environment objects.
+The library handles event routing; the developer handles game logic.
+
+### `IoTGamePlayerController`
+
+```csharp
+public abstract class IoTGamePlayerController : NetworkBehaviour
+{
+    // Set by BirdSpawnManager on spawn — matches playerId from gRPC events
+    public string PlayerId { get; internal set; }
+ 
+    // Override to handle specific inputs for this player
+    // Called on main thread — safe to access NGO APIs
+    public abstract void OnInputReceived(IoTInputEvent evt);
+ 
+    // Override to handle player-specific admin commands if needed
+    public virtual void OnAdminCommand(AdminCommand cmd) { }
+}
+```
+
+Example developer implementation:
+```csharp
+public class PlayerShip : IoTGamePlayerController
+{
+    public override void OnInputReceived(IoTInputEvent evt)
+    {
+        switch (evt.InputName)
+        {
+            case "move-x": SetJoystickX(evt.Value); break;
+            case "move-y": SetJoystickY(evt.Value); break;
+            case "fire":   if (evt.EventType == "pressed") Fire(); break;
+        }
+    }
+}
+```
+
+### `IoTGameEnvironmentController`
+
+```csharp
+public abstract class IoTGameEnvironmentController : NetworkBehaviour
+{
+    // Override to handle environment updates
+    // Called on main thread during Active phase only
+    public abstract void OnEnvironmentUpdate(EnvironmentEvent evt);
+}
+```
+
+Example developer implementation:
+```csharp
+public class EnvironmentController : IoTGameEnvironmentController
+{
+    public override void OnEnvironmentUpdate(EnvironmentEvent evt)
+    {
+        switch (evt.EnvKey)
+        {
+            case "gravity":    ApplyGravityEffect(evt.RawValue); break;
+            case "spawn_rate": ApplySpawnRateEffect(evt.RawValue); break;
+            case "ultrasonic_zone": ApplyZoneEffect((int)evt.RawValue); break;
+        }
+    }
+}
+```
+ 
+---
+
+## Authentication: Shared Secret Validation
+
+Every incoming gRPC RPC validates the shared secret from metadata.
+This closes the gap where anyone reaching port 9090 could send arbitrary events.
+
+```csharp
+// In IoTGameServiceImpl — called on every RPC
+private void ValidateSecret(ServerCallContext context)
+{
+    var secret = context.RequestHeaders.GetValue("x-iotgame-secret");
+    if (secret != IoTGameServer.SharedSecret)
+        throw new RpcException(
+            new Status(StatusCode.Unauthenticated, "Invalid shared secret"));
+}
+ 
+public override Task<InputEventResponse> SendInputBatch(
+    InputBatchRequest request, ServerCallContext context)
+{
+    ValidateSecret(context);
+    // ... enqueue to InputQueue
+}
+```
+
+The shared secret is configured in `IoTGameServer.Initialize()`:
+```csharp
+// In developer's ServerBootstrap.cs
+IoTGameServer.Initialize(grpcPort: 9090, secret: "your-shared-secret");
+```
+
+Must match `IoTGame:SharedSecret` in the ASP.NET `appsettings.json`.
+ 
+---
+
+## `ConnectionApprovalHandler` Phase 4 Update
+
+All clients are spectators — approve unconditionally. Optionally parse
+`preferredPlayerId` for UI display purposes only:
+
+```csharp
+NetworkManager.Singleton.ConnectionApprovalCallback = (request, response) =>
+{
+    // All clients are spectators — no identity validation needed
+    response.Approved          = true;
+    response.CreatePlayerObject = false;
+ 
+    // Parse optional display preference — not used for auth or control
+    string payload = Encoding.UTF8.GetString(request.Payload);
+    if (payload.StartsWith("spectator:"))
+    {
+        string preferredPlayerId = payload.Replace("spectator:", "");
+        // Store per-client for RoundUIManager highlight logic
+        _clientPreferences[request.ClientNetworkId] = preferredPlayerId;
+    }
+};
+```
+ 
+---
+
+## `GameRoundManager` Phase 4 Update
+
+Handles session config delivered via `SendAdminCommand("session_start")`:
+
+```csharp
+void HandleAdminCommand(AdminCommand cmd)
+{
+    switch (cmd.Command)
+    {
+        case "session_start":
+            // Read session config from auxiliary
+            _roundDuration = cmd.Auxiliary.GetValueOrDefault("round_duration", 120f);
+            _maxMinions    = (int)cmd.Auxiliary.GetValueOrDefault("max_minions", 20f);
+            _playerCount   = (int)cmd.Auxiliary.GetValueOrDefault("player_count", 4f);
+            break;
+ 
+        case "start_round":
+            if (CurrentPhase.Value == RoundPhase.Waiting)
+                TransitionTo(RoundPhase.Countdown);
+            break;
+ 
+        case "end_round":
+            if (CurrentPhase.Value == RoundPhase.Active)
+                TransitionTo(RoundPhase.Ended);
+            break;
+ 
+        case "reset":
+            TransitionTo(RoundPhase.Waiting);
+            ResetAllReadyFlags();
+            break;
+    }
+}
+```
+ 
+---
+
+## Threading Model — Unchanged, Documented Explicitly
+
+Three separate `ConcurrentQueue`s, all drained on the main thread by
+`IoTInputDispatcher.Update()`:
+
+```
+[Kestrel background thread]
+  IoTGameServiceImpl.SendInputBatch      → enqueue to InputQueue
+  IoTGameServiceImpl.SendEnvironmentEvent → enqueue to EnvironmentQueue
+  IoTGameServiceImpl.SendAdminCommand    → enqueue to AdminCommandQueue
+ 
+[Unity main thread — every Update()]
+  IoTInputDispatcher.Update()
+    → drain InputQueue      → IoTGameServer.OnInputReceived
+    → drain EnvironmentQueue → IoTGameServer.OnEnvironmentUpdate
+    → drain AdminCommandQueue → IoTGameServer.OnAdminCommand
+```
+
+**Never call any Unity API from inside `IoTGameServiceImpl`.**
+This rule applies to all library code and all developer code in `Assets/Game/`.
+ 

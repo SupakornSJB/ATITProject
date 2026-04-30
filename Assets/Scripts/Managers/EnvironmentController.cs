@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using IoTGame.Core;
+using IoTGame.Models;
 using Shared;
 using Unity.Netcode;
 using UnityEngine;
@@ -43,13 +45,6 @@ namespace Managers
         // Server-only: all game Rigidbodies that need GlobalGravity applied
         private readonly List<Rigidbody> _gravityBodies = new();
 
-        // Server-only cooldown timestamps
-        private float _lastShieldTrigger = float.MinValue;
-        private float _lastTimeSlow = float.MinValue;
-        private const float ShieldCooldown = 15f;
-        private const float TimeSlowCooldown = 20f;
-
-        private float _zone4DrainAccum;
         private bool _surgeCalloutFired;
 
         // Called by BossEnemyBird, EnemyBird, Projectile on OnNetworkSpawn (server only)
@@ -74,22 +69,19 @@ namespace Managers
                     rb.AddForce(Vector3.down * g, ForceMode.Acceleration);
         }
 
-        private void Update()
+        public override void OnNetworkSpawn()
         {
             if (!IsServer) return;
-            DrainEnvironmentQueue();
-            if (GameRoundManager.Instance?.CurrentPhase.Value == RoundPhase.Active &&
-                UltrasonicZone.Value == 4)
-                ApplyBossDrainZone4();
+            EnvironmentEventDispatcher.OnReceived += OnEnvironmentEventReceived;
         }
 
-        private void DrainEnvironmentQueue()
+        public override void OnNetworkDespawn()
         {
-#if UNITY_SERVER
-            while (Server.IoTGameServiceImpl.EnvironmentQueue.TryDequeue(out var evt))
-                OnEnvironmentUpdate(evt.EnvKey, evt.RawValue);
-#endif
+            EnvironmentEventDispatcher.OnReceived -= OnEnvironmentEventReceived;
         }
+
+        private void OnEnvironmentEventReceived(EnvironmentEvent evt) =>
+            OnEnvironmentUpdate(evt.EnvKey, evt.RawValue);
 
         // envKey convention (set by ASP.NET, never assume physical sensor name):
         //   "gravity"         — from DHT11 temperature; slow-changing ambient parameter
@@ -130,16 +122,16 @@ namespace Managers
         }
 
         // Higher humidity → faster spawning.
-        // Range: 30% → 8s interval, 90% → 1.5s interval
+        // Range: 40% → 3s interval, 80% → 0.6s interval (aggressive curve)
         private void ApplySpawnRateEffect(float humidity)
         {
-            float interval = Mathf.Lerp(8.0f, 1.5f, Mathf.InverseLerp(30f, 90f, humidity));
+            float interval = Mathf.Lerp(3f, 0.6f, Mathf.InverseLerp(40f, 80f, humidity));
             EnemySpawnManager.Instance?.SetSpawnInterval(interval);
 
-            if (humidity >= 70f && !_surgeCalloutFired)
+            if (humidity >= 65f && !_surgeCalloutFired)
             {
                 _surgeCalloutFired = true;
-                CalloutManager.Instance?.TryShowCallout("MINION SURGE", 2f);
+                CalloutManager.Instance?.TryShowCallout("SPAWN SURGE", 2f);
             }
             else if (humidity < 50f && _surgeCalloutFired)
             {
@@ -148,88 +140,28 @@ namespace Managers
             }
         }
 
-        private void OnZoneChanged(int from, int to)
-        {
-            if (from == 2 && to != 2)
-                GlobalGameSpeed.Value = 1f;
-            if (from == 4 && to != 4)
-                _zone4DrainAccum = 0f;
-        }
+        private void OnZoneChanged(int from, int to) { }
 
         private void ApplyZoneEffects(int zone)
         {
-            float now = Time.time;
-            switch (zone)
+            GlobalGameSpeed.Value = zone switch
             {
-                case 1:
-                    if (now - _lastShieldTrigger >= ShieldCooldown)
-                    {
-                        _lastShieldTrigger = now;
-                        ActivateShields();
-                    }
-                    else
-                    {
-                        CalloutManager.Instance?.TryShowCallout("SHIELD COOLDOWN", 2f);
-                        Debug.Log($"[EnvironmentController] Shield cooldown: {ShieldCooldown - (now - _lastShieldTrigger):F0}s remaining");
-                    }
-                    break;
-
-                case 2:
-                    if (now - _lastTimeSlow >= TimeSlowCooldown)
-                    {
-                        _lastTimeSlow = now;
-                        GlobalGameSpeed.Value = 0.6f;
-                    }
-                    break;
-
-                case 3:
-                    break; // speed restored in OnZoneChanged
-
-                case 4:
-                    break; // frenzy is continuous while in Zone D — EnemySpawnManager checks zone directly
-            }
+                1 => 0.5f,
+                2 => 0.75f,
+                3 => 1.0f,
+                4 => 1.5f,
+                _ => 1.0f
+            };
         }
 
         private void FireZoneCallout(int zone)
         {
             switch (zone)
             {
-                // Zone 1 callout handled inside ApplyZoneEffects (shield vs cooldown)
-                case 2: CalloutManager.Instance?.TryShowCallout("TIME SLOW", 2f); break;
-                case 3: CalloutManager.Instance?.TryShowCallout("NORMAL", 1.5f); break;
-                case 4: CalloutManager.Instance?.TryShowCallout("FRENZY", 2f); break;
-            }
-        }
-
-        private void ApplyBossDrainZone4()
-        {
-            _zone4DrainAccum += 2f * Time.deltaTime;
-            if (_zone4DrainAccum < 1f) return;
-
-            int damage = Mathf.FloorToInt(_zone4DrainAccum);
-            _zone4DrainAccum -= damage;
-
-            var spawnMgr = BirdSpawnManager.Instance;
-            if (spawnMgr == null) return;
-            if (spawnMgr.TryGetBossBird("player-3", out var boss3) && boss3 != null)
-                boss3.TakeDamage(damage);
-            if (spawnMgr.TryGetBossBird("player-4", out var boss4) && boss4 != null)
-                boss4.TakeDamage(damage);
-        }
-
-        private void ActivateShields()
-        {
-            var spawnMgr = BirdSpawnManager.Instance;
-            if (spawnMgr == null) return;
-            if (spawnMgr.TryGetShip("player-1", out var ship1) && ship1 != null)
-            {
-                ship1.ShieldActive.Value = true;
-                ship1.ShieldHealth.Value = 50;
-            }
-            if (spawnMgr.TryGetShip("player-2", out var ship2) && ship2 != null)
-            {
-                ship2.ShieldActive.Value = true;
-                ship2.ShieldHealth.Value = 50;
+                case 1: CalloutManager.Instance?.TryShowCallout("GAME SPEED: VERY SLOW", 2f); break;
+                case 2: CalloutManager.Instance?.TryShowCallout("GAME SPEED: SLOW", 2f); break;
+                case 3: CalloutManager.Instance?.TryShowCallout("GAME SPEED: NORMAL", 1.5f); break;
+                case 4: CalloutManager.Instance?.TryShowCallout("GAME SPEED: FAST", 2f); break;
             }
         }
 
@@ -238,23 +170,9 @@ namespace Managers
             if (!IsServer) return;
             GlobalGameSpeed.Value = 1f;
             GlobalGravity.Value = 30f;
-            _lastShieldTrigger = float.MinValue;
-            _lastTimeSlow = float.MinValue;
-            _zone4DrainAccum = 0f;
             _surgeCalloutFired = false;
         }
 
-        public float GetBossFlapBonus() => UltrasonicZone.Value == 1 ? 1.3f : 1f;
-
-        public float GetCooldownRemaining()
-        {
-            float now = Time.time;
-            return UltrasonicZone.Value switch
-            {
-                1 => Mathf.Max(0f, ShieldCooldown - (now - _lastShieldTrigger)),
-                2 => Mathf.Max(0f, TimeSlowCooldown - (now - _lastTimeSlow)),
-                _ => 0f
-            };
-        }
+        public float GetCooldownRemaining() => 0f;
     }
 }

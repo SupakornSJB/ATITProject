@@ -1,5 +1,6 @@
 #if UNITY_SERVER
 using Grpc.Core;
+using IoTGame.Core;
 using UnityEngine;
 
 namespace Server

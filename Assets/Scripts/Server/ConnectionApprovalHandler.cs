@@ -1,14 +1,16 @@
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Text;
 using Unity.Netcode;
 using UnityEngine;
 
 namespace Server
 {
+    // Phase 4: all Unity clients are spectators — approve unconditionally.
+    // Player objects are server-spawned when gRPC events arrive, not on client connect.
     public static class ConnectionApprovalHandler
     {
-        private static readonly HashSet<string> ValidPlayerIds = new()
-            { "player-1", "player-2", "player-3", "player-4", "stage" };
+        // Maps clientNetworkId → preferredPlayerId (may be empty string)
+        private static readonly ConcurrentDictionary<ulong, string> _clientPreferences = new();
 
         public static void Register()
         {
@@ -19,37 +21,26 @@ namespace Server
             NetworkManager.ConnectionApprovalRequest request,
             NetworkManager.ConnectionApprovalResponse response)
         {
-            string clientLabel;
-            try { clientLabel = Encoding.UTF8.GetString(request.Payload); }
-            catch
-            {
-                Reject(response, "Invalid payload encoding");
-                return;
-            }
-
             response.Approved = true;
             response.CreatePlayerObject = false;
-            Debug.Log($"[ConnectionApproval] Approved: '{clientLabel}' (clientId={request.ClientNetworkId})");
 
-            if (clientLabel == "stage")
-            {
-                Managers.PipeSpawnManager.Instance?.RegisterStageDevice();
-            }
-            else if (ValidPlayerIds.Contains(clientLabel))
-            {
-                // Spawn the player's NetworkObject immediately on connection.
-                // SpawnForPlayer is idempotent — safe to call again from IoTInputManager.
-                Managers.BirdSpawnManager.Instance?.SpawnForPlayer(clientLabel);
-            }
+            string payload;
+            try { payload = Encoding.UTF8.GetString(request.Payload); }
+            catch { payload = "spectator"; }
+
+            string preferredPlayerId = "";
+            if (payload.StartsWith("spectator:"))
+                preferredPlayerId = payload.Substring("spectator:".Length);
+
+            _clientPreferences[request.ClientNetworkId] = preferredPlayerId;
+            Debug.Log($"[ConnectionApproval] Spectator approved — clientId={request.ClientNetworkId} preferred='{preferredPlayerId}'");
         }
 
-        public static void ReleasePlayer(string playerId) { }
+        /// <summary>Returns the preferredPlayerId for a connected client, or empty string if none.</summary>
+        public static string GetPreferredPlayerId(ulong clientNetworkId) =>
+            _clientPreferences.TryGetValue(clientNetworkId, out var p) ? p : "";
 
-        private static void Reject(NetworkManager.ConnectionApprovalResponse r, string reason)
-        {
-            r.Approved = false;
-            r.Reason = reason;
-            Debug.LogWarning($"[ConnectionApproval] Rejected — {reason}");
-        }
+        public static void OnClientDisconnected(ulong clientNetworkId) =>
+            _clientPreferences.TryRemove(clientNetworkId, out _);
     }
 }

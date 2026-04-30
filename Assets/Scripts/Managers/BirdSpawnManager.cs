@@ -9,21 +9,13 @@ namespace Managers
     public class BirdSpawnManager : NetworkSingleton<BirdSpawnManager>
     {
         [SerializeField] private GameObject _shipPrefab;
-        [SerializeField] private GameObject _bossBirdPrefab;
 
         private readonly Dictionary<string, NetworkObject> _ships = new();
-        private readonly Dictionary<string, NetworkObject> _bossBirds = new();
 
         private static readonly Dictionary<string, Vector3> ShipSpawns = new()
         {
-            { "player-1", new Vector3(-3f, -5f, 0f) },
-            { "player-2", new Vector3(3f, -5f, 0f) },
-        };
-
-        private static readonly Dictionary<string, Vector3> BossSpawns = new()
-        {
-            { "player-3", new Vector3(-3f, 5f, 0f) },
-            { "player-4", new Vector3(3f, 5f, 0f) },
+            { "player-1", new Vector3(-8f,  2f, 0f) },
+            { "player-2", new Vector3(-8f, -2f, 0f) },
         };
 
         public override void OnNetworkSpawn()
@@ -47,9 +39,7 @@ namespace Managers
             if (!IsServer) return;
             if (playerId is "player-1" or "player-2")
                 SpawnShip(playerId);
-            else if (playerId is "player-3" or "player-4")
-                SpawnBossBird(playerId);
-            // "stage" intentionally gets no NetworkObject
+            // "stage" and bird players intentionally get no NetworkObject
         }
 
         private void SpawnShip(string playerId)
@@ -60,33 +50,11 @@ namespace Managers
             var netObj = go.GetComponent<NetworkObject>();
             netObj.Spawn();
             var ship = go.GetComponent<PlayerShip>();
-            ship.ShipColor.Value = PlayerDistinguisherManager.Instance.RequestColor(playerId);
+            var color = PlayerDistinguisherManager.Instance.RequestColor(playerId);
+            ship.ShipColor.Value = color;
             ship.Init(playerId);
             _ships[playerId] = netObj;
             Debug.Log($"[BirdSpawnManager] Spawned ship for '{playerId}'");
-        }
-
-        private void SpawnBossBird(string playerId)
-        {
-            if (_bossBirds.ContainsKey(playerId) || _bossBirdPrefab == null) return;
-            var pos = BossSpawns.GetValueOrDefault(playerId, Vector3.zero);
-            var go = Instantiate(_bossBirdPrefab, pos, Quaternion.identity);
-            var netObj = go.GetComponent<NetworkObject>();
-            netObj.Spawn();
-            var boss = go.GetComponent<BossEnemyBird>();
-            boss.BossColor.Value = PlayerDistinguisherManager.Instance.RequestColor(playerId);
-            boss.Init(playerId, pos);
-            _bossBirds[playerId] = netObj;
-            Debug.Log($"[BirdSpawnManager] Spawned boss bird for '{playerId}'");
-        }
-
-        public void HandleBossBirdDeath(string playerId)
-        {
-            if (!_bossBirds.TryGetValue(playerId, out var netObj)) return;
-            _bossBirds.Remove(playerId);
-            if (netObj != null && netObj.IsSpawned)
-                netObj.Despawn();
-            Debug.Log($"[BirdSpawnManager] Boss bird despawned for '{playerId}'");
         }
 
         public void HandleShipDeath(string playerId)
@@ -101,7 +69,7 @@ namespace Managers
         private void OnClientDisconnected(ulong clientId)
         {
             // Clients are spectators — no avatar cleanup needed here.
-            // Player avatars are server-owned and persist until GameRoundManager handles disconnect.
+            // Player avatars are server-owned and persist until GameSessionManager handles disconnect.
         }
 
         public bool TryGetShip(string playerId, out PlayerShip ship)
@@ -112,28 +80,24 @@ namespace Managers
             return ship != null;
         }
 
-        public bool TryGetBossBird(string playerId, out BossEnemyBird boss)
-        {
-            boss = null;
-            if (!_bossBirds.TryGetValue(playerId, out var netObj)) return false;
-            boss = netObj != null ? netObj.GetComponent<BossEnemyBird>() : null;
-            return boss != null;
-        }
-
         public PlayerShip GetShip(string playerId)
         {
             TryGetShip(playerId, out var ship);
             return ship;
         }
 
-        public BossEnemyBird GetBossBird(string playerId)
+        public List<PlayerShip> GetAllShips()
         {
-            TryGetBossBird(playerId, out var boss);
-            return boss;
+            var result = new List<PlayerShip>();
+            foreach (var netObj in _ships.Values)
+            {
+                var ship = netObj != null ? netObj.GetComponent<PlayerShip>() : null;
+                if (ship != null) result.Add(ship);
+            }
+            return result;
         }
 
-        public bool HasAnyShip()     => _ships.Count > 0;
-        public bool HasAnyBossBird() => _bossBirds.Count > 0;
+        public bool HasAnyShip() => _ships.Count > 0;
 
         // Called on round reset — despawns all player-owned entities so the next round
         // starts clean with fresh spawns at correct positions.
@@ -144,18 +108,7 @@ namespace Managers
                 if (netObj != null && netObj.IsSpawned) netObj.Despawn();
             _ships.Clear();
 
-            foreach (var netObj in _bossBirds.Values)
-                if (netObj != null && netObj.IsSpawned) netObj.Despawn();
-            _bossBirds.Clear();
         }
 
-        // Phase 2 backward compat stubs
-        public bool TryGetBird(string playerId, out PlayerBird bird)
-        {
-            bird = null;
-            return false;
-        }
-
-        public void HandleBirdDeath(string playerId) { }
     }
 }

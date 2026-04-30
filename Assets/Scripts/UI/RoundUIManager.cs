@@ -4,7 +4,6 @@ using Managers;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.UI;
 
 namespace UI
 {
@@ -12,41 +11,29 @@ namespace UI
     {
         public static RoundUIManager Instance { get; private set; }
 
-        [Header("Phase Panels")]
-        [SerializeField] private GameObject _waitingPanel;
-        [SerializeField] private GameObject _countdownPanel;
-        [SerializeField] private GameObject _activeHudPanel;
-        [SerializeField] private GameObject _endedPanel;
-
-        [Header("Waiting UI")]
-        [SerializeField] private Image _ship1ReadyIndicator;
-        [SerializeField] private Image _ship2ReadyIndicator;
-        [SerializeField] private Image _bird1ReadyIndicator;
-        [SerializeField] private Image _bird2ReadyIndicator;
-
-        [Header("Active HUD")]
-        [SerializeField] private Slider _boss1HpBar;
-        [SerializeField] private Slider _boss2HpBar;
-        [SerializeField] private Slider _ship1HpBar;
-        [SerializeField] private Slider _ship2HpBar;
+        [Header("Minimal Corner Overlays")]
         [SerializeField] private TextMeshProUGUI _roundTimerText;
         [SerializeField] private TextMeshProUGUI _zoneIndicatorText;
 
-        [Header("Stage Info Panel (visible any phase)")]
-        [SerializeField] private TextMeshProUGUI _temperatureText;
+        [Header("Stage Info (always visible)")]
         [SerializeField] private TextMeshProUGUI _humidityText;
         [SerializeField] private TextMeshProUGUI _zoneDetailText;
-        [SerializeField] private TextMeshProUGUI _cooldownText;
+
+        [Header("Survival Stopwatch")]
+        [SerializeField] private TextMeshProUGUI _survivalTimerText;
+
+        [Header("Waiting Screen")]
+        [SerializeField] private TextMeshProUGUI _waitingText;
 
         [Header("Callout")]
         [SerializeField] private TextMeshProUGUI _calloutText;
-        [SerializeField] private GameObject _calloutPanel;
+        [SerializeField] private GameObject      _calloutPanel;
 
         [Header("Tutorial (F4 to toggle)")]
         [SerializeField] private GameObject _tutorialOverlay;
 
         private Coroutine _calloutCoroutine;
-        private RoundPhase _currentPhase = (RoundPhase)(-1);
+        private SessionPhase _currentPhase = (SessionPhase)(-1);
 
         private void Awake()
         {
@@ -60,87 +47,66 @@ namespace UI
 
         private void Update()
         {
-            if (GameRoundManager.Instance == null) return;
+            if (GameSessionManager.Instance == null) return;
 
-            var phase = GameRoundManager.Instance.CurrentPhase.Value;
+            var phase = GameSessionManager.Instance.CurrentPhase.Value;
             if (phase != _currentPhase)
             {
                 _currentPhase = phase;
-                ShowPhasePanel(phase);
+                UpdateWaitingText(phase);
             }
 
-            UpdateHudValues(phase);
+            UpdateCornerOverlays(phase);
+            UpdateSurvivalTimer(phase);
+            UpdateStageInfo();
 
             if (Keyboard.current != null && Keyboard.current.f4Key.wasPressedThisFrame && _tutorialOverlay != null)
                 _tutorialOverlay.SetActive(!_tutorialOverlay.activeSelf);
         }
 
-        private void ShowPhasePanel(RoundPhase phase)
+        private void UpdateWaitingText(SessionPhase phase)
         {
-            _waitingPanel?.SetActive(phase == RoundPhase.Waiting);
-            _countdownPanel?.SetActive(phase == RoundPhase.Countdown);
-            _activeHudPanel?.SetActive(phase == RoundPhase.Active);
-            _endedPanel?.SetActive(phase == RoundPhase.Ended);
+            if (_waitingText == null) return;
+            _waitingText.gameObject.SetActive(phase == SessionPhase.Waiting);
+            if (phase == SessionPhase.Waiting)
+                _waitingText.text = "Waiting for admin to start round...";
         }
 
-        private void UpdateHudValues(RoundPhase phase)
+        private void UpdateCornerOverlays(SessionPhase phase)
         {
-            if (phase == RoundPhase.Waiting)
+            if (_roundTimerText != null)
             {
-                SetReadyColor(_ship1ReadyIndicator, GameRoundManager.Instance.Ship1Ready.Value);
-                SetReadyColor(_ship2ReadyIndicator, GameRoundManager.Instance.Ship2Ready.Value);
-                SetReadyColor(_bird1ReadyIndicator, GameRoundManager.Instance.Bird1Ready.Value);
-                SetReadyColor(_bird2ReadyIndicator, GameRoundManager.Instance.Bird2Ready.Value);
+                bool showTimer = phase == SessionPhase.Active || phase == SessionPhase.Countdown;
+                _roundTimerText.gameObject.SetActive(showTimer);
+                if (showTimer)
+                    _roundTimerText.text = Mathf.CeilToInt(GameSessionManager.Instance.SessionTimer.Value).ToString();
             }
 
-            if (phase == RoundPhase.Active || phase == RoundPhase.Countdown)
+            if (_zoneIndicatorText != null && EnvironmentController.Instance != null)
             {
-                if (_roundTimerText != null)
-                    _roundTimerText.text = Mathf.CeilToInt(GameRoundManager.Instance.RoundTimer.Value).ToString();
-
-                UpdateHpBars();
-                UpdateZoneIndicator();
+                int zone = EnvironmentController.Instance.ActiveZoneEffect.Value;
+                _zoneIndicatorText.text = zone switch
+                {
+                    1 => "Zone A",
+                    2 => "Zone B",
+                    3 => "Zone C",
+                    4 => "Zone D",
+                    _ => "Zone C"
+                };
             }
-
-            UpdateStageInfo();
         }
 
-        private void SetReadyColor(Image img, bool ready)
+        private void UpdateSurvivalTimer(SessionPhase phase)
         {
-            if (img != null)
-                img.color = ready ? Color.green : Color.red;
-        }
-
-        private void UpdateHpBars()
-        {
-            var spawnMgr = BirdSpawnManager.Instance;
-            if (spawnMgr == null) return;
-
-            if (_boss1HpBar != null && spawnMgr.TryGetBossBird("player-3", out var boss1))
-                _boss1HpBar.value = boss1 != null ? boss1.BossHealth.Value / 100f : 0f;
-
-            if (_boss2HpBar != null && spawnMgr.TryGetBossBird("player-4", out var boss2))
-                _boss2HpBar.value = boss2 != null ? boss2.BossHealth.Value / 100f : 0f;
-
-            if (_ship1HpBar != null && spawnMgr.TryGetShip("player-1", out var ship1))
-                _ship1HpBar.value = ship1 != null ? ship1.ShipHealth.Value / 100f : 0f;
-
-            if (_ship2HpBar != null && spawnMgr.TryGetShip("player-2", out var ship2))
-                _ship2HpBar.value = ship2 != null ? ship2.ShipHealth.Value / 100f : 0f;
-        }
-
-        private void UpdateZoneIndicator()
-        {
-            if (_zoneIndicatorText == null || EnvironmentController.Instance == null) return;
-            int zone = EnvironmentController.Instance.ActiveZoneEffect.Value;
-            _zoneIndicatorText.text = zone switch
-            {
-                1 => "Zone A (Shield)",
-                2 => "Zone B (Slow)",
-                3 => "Zone C (Normal)",
-                4 => "Zone D (Frenzy)",
-                _ => "Zone C (Normal)"
-            };
+            if (_survivalTimerText == null) return;
+            bool show = phase == SessionPhase.Active || phase == SessionPhase.Ended;
+            _survivalTimerText.gameObject.SetActive(show);
+            if (!show) return;
+            float t = GameSessionManager.Instance.SurvivalTime.Value;
+            int minutes = (int)(t / 60f);
+            int seconds = (int)(t % 60f);
+            int millis  = (int)((t % 1f) * 100f);
+            _survivalTimerText.text = $"Survived: {minutes:00}:{seconds:00}.{millis:00}";
         }
 
         private void UpdateStageInfo()
@@ -148,32 +114,26 @@ namespace UI
             var env = EnvironmentController.Instance;
             if (env == null) return;
 
-            if (_temperatureText != null)
-            {
-                float g = env.GlobalGravity.Value;
-                _temperatureText.text = $"Gravity: {g:F1}  ({env.Temperature.Value:F1}°C)";
-            }
-
             if (_humidityText != null)
             {
                 float h = env.Humidity.Value;
-                string rate = h >= 70f ? "fast" : h >= 50f ? "normal" : "slow";
-                _humidityText.text = $"Spawn rate: {rate}  ({h:F0}% humid)";
+                string rate = h >= 70f ? "Fast" : h >= 50f ? "Normal" : "Slow";
+                _humidityText.text = $"Humidity: {h:F0}%  Spawn: {rate}";
             }
 
             if (_zoneDetailText != null)
             {
                 int zone = env.UltrasonicZone.Value;
-                string zoneLabel = zone == 1 ? "Zone A — SHIELD" :
-                                   zone == 2 ? "Zone B — TIME SLOW" :
-                                   zone == 4 ? "Zone D — FRENZY" : "Zone C — Normal";
-                _zoneDetailText.text = $"Zone: {zoneLabel}";
-            }
-
-            if (_cooldownText != null)
-            {
-                float cd = env.GetCooldownRemaining();
-                _cooldownText.text = cd > 0f ? $"Cooldown: {cd:F0}s" : "Ready";
+                float speed = env.GlobalGameSpeed.Value;
+                string label = zone switch
+                {
+                    1 => "Zone A — Very Slow",
+                    2 => "Zone B — Slow",
+                    3 => "Zone C — Normal",
+                    4 => "Zone D — Fast",
+                    _ => "Zone C — Normal"
+                };
+                _zoneDetailText.text = $"{label}  (x{speed:F2})";
             }
         }
 

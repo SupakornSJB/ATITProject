@@ -8,13 +8,13 @@ namespace Managers
     public class EnemySpawnManager : NetworkSingleton<EnemySpawnManager>
     {
         [SerializeField] private GameObject _enemyBirdPrefab;
-        [SerializeField] private float _spawnXMin = -5f;
-        [SerializeField] private float _spawnXMax = 5f;
-        [SerializeField] private float _spawnY = 8f;
+        [SerializeField] private float _spawnX = 12f;
+        [SerializeField] private float _spawnYMin = -4f;
+        [SerializeField] private float _spawnYMax = 4f;
 
         // Base interval set by EnvironmentController via spawn_rate key.
         // Zone D halves it on top; floor is always 1s.
-        private float _baseInterval = 5f;
+        private float _baseInterval = 2f;
         private float _spawnTimer;
 
         private readonly List<NetworkObject> _liveMinions = new();
@@ -22,7 +22,7 @@ namespace Managers
         private void Update()
         {
             if (!IsServer) return;
-            if (GameRoundManager.Instance?.CurrentPhase.Value != RoundPhase.Active) return;
+            if (GameSessionManager.Instance?.CurrentPhase.Value != SessionPhase.Active) return;
 
             bool isZoneD = EnvironmentController.Instance?.UltrasonicZone.Value == 4;
             float effectiveInterval = Mathf.Max(1f, _baseInterval * (isZoneD ? 0.5f : 1.0f));
@@ -38,8 +38,8 @@ namespace Managers
         private void SpawnMinion()
         {
             if (_enemyBirdPrefab == null) return;
-            float x = Random.Range(_spawnXMin, _spawnXMax);
-            var go = Instantiate(_enemyBirdPrefab, new Vector3(x, _spawnY, 0f), Quaternion.identity);
+            float y = Random.Range(_spawnYMin, _spawnYMax);
+            var go = Instantiate(_enemyBirdPrefab, new Vector3(_spawnX, y, 0f), Quaternion.identity);
             var netObj = go.GetComponent<NetworkObject>();
             netObj.Spawn();
             _liveMinions.Add(netObj);

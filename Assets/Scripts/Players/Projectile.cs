@@ -1,67 +1,39 @@
-using Managers;
-using Unity.Netcode;
 using UnityEngine;
 
 namespace Players
 {
-    public class Projectile : NetworkBehaviour
+    // Visual-only projectile fired by PlayerShip — not a NetworkObject.
+    // Spawned locally on every client via PlayerShip ClientRpc.
+    // Server hit detection is handled by raycast in PlayerShip.Fire().
+    public class Projectile : MonoBehaviour
     {
-        [SerializeField] private float _speed = 10f;
-        [SerializeField] private float _topY = 12f;
-        [SerializeField] private float _bottomY = -12f;
+        [SerializeField] private float _speed = 12f;
+        [SerializeField] private float _despawnX = 14f;
 
         private Rigidbody _rb;
-        private PlayerShip _owner;
 
         private void Awake()
         {
             _rb = GetComponent<Rigidbody>();
-            _rb.useGravity = false; // GlobalGravity applied manually
+            if (_rb != null) _rb.useGravity = false;
         }
 
-        public void Init(PlayerShip owner)
+        private void Start()
         {
-            _owner = owner;
+            if (_rb != null)
+                _rb.linearVelocity = Vector3.right * _speed;
         }
 
-        public override void OnNetworkSpawn()
+        private void Update()
         {
-            base.OnNetworkSpawn();
-            if (!IsServer) return;
-            float speed = _speed * (EnvironmentController.Instance?.GlobalGameSpeed.Value ?? 1f);
-            _rb.linearVelocity = Vector3.up * speed;
-            EnvironmentController.Instance?.RegisterGravityBody(_rb);
+            if (transform.position.x >= _despawnX)
+                Destroy(gameObject);
         }
 
-        public override void OnNetworkDespawn()
-        {
-            if (IsServer) EnvironmentController.Instance?.UnregisterGravityBody(_rb);
-            base.OnNetworkDespawn();
-        }
-
-        private void FixedUpdate()
-        {
-            if (!IsServer) return;
-            if (transform.position.y >= _topY || transform.position.y <= _bottomY)
-                DestroyProjectile();
-        }
-
-        // Projectile collider must be set as Trigger in the prefab
         private void OnTriggerEnter(Collider other)
         {
-            if (!IsServer) return;
-            var boss = other.GetComponentInParent<BossEnemyBird>();
-            if (boss != null)
-            {
-                boss.TakeDamage(20);
-                DestroyProjectile();
-            }
-        }
-
-        private void DestroyProjectile()
-        {
-            _owner?.OnProjectileDestroyed();
-            GetComponent<NetworkObject>().Despawn();
+            if (other.GetComponentInParent<EnemyBird>() != null)
+                Destroy(gameObject);
         }
     }
 }

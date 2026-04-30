@@ -27,7 +27,7 @@ namespace Managers
         {
             if (!IsServer) return;
             if (!_stageDevicePresent) return;
-            if (GameRoundManager.Instance?.CurrentPhase.Value != RoundPhase.Active) return;
+            if (GameSessionManager.Instance?.CurrentPhase.Value != SessionPhase.Active) return;
 
             _spawnTimer -= Time.deltaTime;
             if (_spawnTimer <= 0f)

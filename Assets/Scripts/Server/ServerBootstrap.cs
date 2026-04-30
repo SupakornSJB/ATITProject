@@ -1,3 +1,4 @@
+using System.Text;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
@@ -6,8 +7,9 @@ namespace Server
 {
     public class ServerBootstrap : MonoBehaviour
     {
-        [Header("Client / Host Settings")]
-        [SerializeField] private string _playerId = "player-1";
+        [Header("Client Settings")]
+        [Tooltip("Optional: highlights this player's UI on the spectator client. Leave blank for neutral view.")]
+        [SerializeField] private string _preferredPlayerId = "";
         [SerializeField] private string _serverAddress = "127.0.0.1";
         [SerializeField] private ushort _clientGamePort = 7777;
         [SerializeField] private bool _startAsHost = false;
@@ -17,11 +19,13 @@ namespace Server
 #if UNITY_SERVER
             int grpcPort = 9090;
             int gamePort = 7777;
+            string secret = "";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
-                if (args[i] == "-grpcPort" && int.TryParse(args[i + 1], out int gp)) grpcPort = gp;
-                if (args[i] == "-gamePort" && int.TryParse(args[i + 1], out int mp)) gamePort = mp;
+                if (args[i] == "-grpcPort"     && int.TryParse(args[i + 1], out int gp)) grpcPort = gp;
+                if (args[i] == "-gamePort"     && int.TryParse(args[i + 1], out int mp)) gamePort = mp;
+                if (args[i] == "-sharedSecret") secret = args[i + 1];
             }
 
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
@@ -30,7 +34,7 @@ namespace Server
 
             ConnectionApprovalHandler.Register();
             NetworkManager.Singleton.StartServer();
-            GrpcServerHost.Start(grpcPort);
+            IoTGame.Core.IoTGameServer.Initialize(grpcPort, secret);
             Debug.Log($"[ServerBootstrap] Server started — gRPC:{grpcPort} game:{gamePort}");
 #else
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
@@ -40,29 +44,44 @@ namespace Server
                 if (transport != null)
                     transport.SetConnectionData("0.0.0.0", _clientGamePort);
 
-                NetworkManager.Singleton.NetworkConfig.ConnectionData =
-                    System.Text.Encoding.UTF8.GetBytes(_playerId);
                 ConnectionApprovalHandler.Register();
+                NetworkManager.Singleton.NetworkConfig.ConnectionData = BuildSpectatorPayload();
                 NetworkManager.Singleton.StartHost();
-                Debug.Log($"[ServerBootstrap] Host started as '{_playerId}' on port {_clientGamePort}");
+                Debug.Log($"[ServerBootstrap] Host started (spectator:{_preferredPlayerId}) on port {_clientGamePort}");
             }
             else
             {
-                if (transport != null)
-                    transport.SetConnectionData(_serverAddress, _clientGamePort);
+                string address = _serverAddress;
+                ushort port    = _clientGamePort;
+                var args = System.Environment.GetCommandLineArgs();
+                for (int i = 0; i < args.Length - 1; i++)
+                {
+                    if (args[i] == "-serverAddress") address = args[i + 1];
+                    if (args[i] == "-gamePort" && ushort.TryParse(args[i + 1], out ushort p)) port = p;
+                }
 
-                NetworkManager.Singleton.NetworkConfig.ConnectionData =
-                    System.Text.Encoding.UTF8.GetBytes(_playerId);
+                if (transport != null)
+                    transport.SetConnectionData(address, port);
+
+                NetworkManager.Singleton.NetworkConfig.ConnectionData = BuildSpectatorPayload();
                 NetworkManager.Singleton.StartClient();
-                Debug.Log($"[ServerBootstrap] Client started as '{_playerId}'");
+                Debug.Log($"[ServerBootstrap] Client connecting to {address}:{port} (preferred: '{_preferredPlayerId}')");
             }
 #endif
+        }
+
+        private byte[] BuildSpectatorPayload()
+        {
+            string payload = string.IsNullOrWhiteSpace(_preferredPlayerId)
+                ? "spectator"
+                : $"spectator:{_preferredPlayerId}";
+            return Encoding.UTF8.GetBytes(payload);
         }
 
         private void OnDestroy()
         {
 #if UNITY_SERVER
-            GrpcServerHost.Stop();
+            IoTGame.Core.IoTGameServer.Shutdown();
 #endif
         }
     }
