@@ -3,6 +3,8 @@
 > Assumes Phases 1–5 are already set up and working.
 > Phase 6 has **no Unity Editor changes** — no new GameObjects, no new prefabs,
 > no Inspector wiring. All changes are code and cert files only.
+> The cross-repo [setup guide](https://github.com/SupakornSJB/ATITFinalProject/blob/main/docs/setup.md)
+> covers the whole system; this page is the Unity part.
 
 ---
 
@@ -10,10 +12,11 @@
 
 ### Step 1 — Generate certificates (firmware repo)
 
-Run from the `ATITFinalProject-firmware/` directory:
+Run from the `atit_micropython/` repository root (Git Bash on Windows), after
+`scripts/gen_ca.sh` has created the project CA:
 
 ```bash
-./scripts/gen_device_cert.sh unity-server
+bash scripts/gen_device_cert.sh unity-server
 ```
 
 This creates `certs/unity-server/device.crt` and `certs/unity-server/device.key`
@@ -22,47 +25,49 @@ signed by the project CA.
 ### Step 2 — Copy certs into the Unity project
 
 ```bash
-# From ATITFinalProject-firmware/
-cp certs/unity-server/device.crt  path/to/ATITProject/Assets/Certs/device.crt
-cp certs/unity-server/device.key  path/to/ATITProject/Assets/Certs/device.key
-cp certs/ca.crt                   path/to/ATITProject/Assets/Certs/ca.crt
+# From atit_micropython/
+cp certs/unity-server/device.crt  ../ATITProject/Assets/Certs/device.crt
+cp certs/unity-server/device.key  ../ATITProject/Assets/Certs/device.key
+cp certs/ca.crt                   ../ATITProject/Assets/Certs/ca.crt
 ```
 
-The `Assets/Certs/` directory is already created. `.gitignore` in that folder keeps
-`device.crt` and `device.key` out of git. `ca.crt` is safe to commit.
+`Assets/Certs/.gitignore` keeps all three out of git — every deployment generates its
+own CA, so no certificate is committed.
 
 ### Step 3 — Verify the Certs folder
 
 ```
 Assets/Certs/
-├── .gitignore          ← already committed
-├── ca.crt              ← committed (public CA cert)
-├── device.crt    ← gitignored (DO NOT commit)
-└── device.key    ← gitignored (DO NOT commit)
+├── .gitignore    ← committed
+├── ca.crt        ← git-ignored
+├── device.crt    ← git-ignored
+└── device.key    ← git-ignored (never commit)
 ```
 
 ### Step 4 — Build the dedicated server
 
-In Unity: **File → Build Settings → Dedicated Server → Build**.
-
-No project setting changes are needed. The `link.xml` update is already applied in
-code and will take effect on the next build.
+In Unity: **File → Build Settings → Dedicated Server → Build**, or from the command line
+with `-executeMethod BuildServer.Build` (output: `Builds/Server/ATITProject.exe`).
+`CertPostprocessor` in `Assets/Editor/BuildServer.cs` copies the three cert files to
+`<build>/Assets/Certs/` next to the binary.
 
 ### Step 5 — Run the server
 
-```bash
-./ATITProject.x86_64 \
-  -batchmode -nographics \
-  -grpcPort 9090 \
-  -gamePort 7777 \
-  -grpcCert  Assets/Certs/device.crt \
-  -grpcKey   Assets/Certs/device.key \
-  -caCert    Assets/Certs/ca.crt \
-  -logFile   server.log
+```powershell
+Builds/Server/ATITProject.exe -batchmode -nographics `
+  -grpcPort 9090 -gamePort 7777 `
+  -grpcCert Assets/Certs/device.crt `
+  -grpcKey  Assets/Certs/device.key `
+  -caCert   Assets/Certs/ca.crt `
+  -logFile  server.log
 ```
 
 If cert paths are omitted, the server defaults to `Assets/Certs/device.crt`,
-`Assets/Certs/device.key`, and `Assets/Certs/ca.crt` relative to the binary.
+`Assets/Certs/device.key` and `Assets/Certs/ca.crt`. Relative paths resolve against the
+**working directory** the server is started from, not the binary's folder: started from the
+project root (as above) it uses the project's own `Assets/Certs/`; started from inside
+`Builds/Server/` it uses the copies `CertPostprocessor` placed there. Absolute paths avoid
+the ambiguity.
 
 ---
 
@@ -70,46 +75,43 @@ If cert paths are omitted, the server defaults to `Assets/Certs/device.crt`,
 
 | File | Change |
 |---|---|
-| `GrpcServerHost.cs` | Replaced `Grpc.Core.Server` with ASP.NET Core Kestrel + mTLS |
-| `IoTGameServer.cs` | `Initialize()` now takes cert paths instead of a shared secret |
-| `ServerBootstrap.cs` | Parses `-grpcCert`, `-grpcKey`, `-caCert` CLI args; removed `-sharedSecret` |
-| `IoTGameServiceImpl.cs` | `ValidateSecret()` removed; all three RPCs no longer check metadata |
-| `link.xml` | Added X509, Pkcs, and Kestrel stripping exemptions |
-| `Assets/Certs/.gitignore` | Ignores private keys and certs except `ca.crt` |
+| `GrpcServerHost.cs` | `Grpc.Core.Server` now uses `SslServerCredentials` with `RequestAndRequireAndVerify` — a client certificate signed by `ca.crt` is required |
+| `IoTGameServer.cs` | `Initialize()` takes cert paths instead of a shared secret |
+| `ServerBootstrap.cs` | Parses `-grpcCert`, `-grpcKey`, `-caCert` CLI args; `-sharedSecret` removed |
+| `IoTGameServiceImpl.cs` | Shared-secret metadata check removed — authentication is the TLS handshake |
+| `link.xml` | Stripping exemptions for X509 / Pkcs |
+| `BuildServer.cs` | `CertPostprocessor` copies certs into the build output |
+| `Assets/Certs/.gitignore` | Ignores all certificates and keys |
+
+A switch to ASP.NET Core Kestrel (`Grpc.AspNetCore`, installed via NuGetForUnity) was
+planned for this phase but not adopted; the server still runs on `Grpc.Core`.
 
 ---
 
 ## Verifying mTLS Works
 
-### Success case — ASP.NET connects with valid cert
+### Success case — the relay connects with a valid cert
 
 Confirm in `server.log`:
 ```
-[gRPC] Server started with mTLS on port 9090
-[IoTGameServiceImpl] InputBatch — N events
+[gRPC] Starting with mTLS on port 9090
+[gRPC] Server listening on port 9090
 ```
+followed by input arriving from the relay.
 
 ### Failure case — connection without a client cert
 
 ```bash
-# Should fail with TLS handshake error before any gRPC message is sent
+# Should fail with a TLS handshake error before any gRPC message is sent
 grpcurl -plaintext localhost:9090 list
-grpcurl -insecure localhost:9090 list
+grpcurl -insecure  localhost:9090 list
 ```
 
-Expected output: TLS handshake failure. No log line from `IoTGameServiceImpl`.
+### Insecure fallback
 
-If the connection is accepted with no cert, Kestrel's `ClientCertificateMode` is
-not being applied — check that the mTLS `listenOpts` block is reached (port not
-already bound by old server instance).
-
-### Failure case — wrong CA
-
-If ASP.NET presents a cert signed by a different CA:
-```
-[gRPC] Client cert rejected: UntrustedRoot
-```
-The connection is dropped before any RPC is processed.
+If any of the three cert files is missing, the server logs
+`[gRPC] Cert files not found — starting INSECURE` and accepts plain connections.
+Always check for the `Starting with mTLS` line.
 
 ---
 
@@ -117,26 +119,24 @@ The connection is dropped before any RPC is processed.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `FileNotFoundException` on start | Cert paths wrong or files missing | Check `-grpcCert`/`-grpcKey`/`-caCert` args; verify files exist |
-| `CryptographicException: No credentials` on Windows | PFX export issue | `LoadCertWithKey` does the PFX export — if it fails, the cert or key file may be malformed |
-| `X509ChainTrustMode.CustomRootTrust` compile error | .NET < 5 | Unity 6 LTS targets .NET Standard 2.1 with .NET 6 runtime — this should not occur; verify scripting backend is IL2CPP and API compatibility is .NET Standard 2.1 |
-| gRPC calls rejected with `StatusCode.Unavailable` | Old `Grpc.Core` DLLs in `Assets/Plugins/grpc/` conflict with Kestrel | Ensure `Grpc.AspNetCore.Server.dll` is present and `Grpc.Core` (C-core) DLLs are not |
+| `starting INSECURE` in the log | A cert file isn't found at the given path — relative paths resolve against the working directory | Pass absolute `-grpcCert` / `-grpcKey` / `-caCert` paths, or start the server from a folder that contains `Assets/Certs/` |
+| Relay's calls fail with a TLS error | Relay's client cert not signed by the same `ca.crt` | Regenerate the relay cert from the same CA |
 | IL2CPP build crash with no clear error | Missing stripping exemption | Confirm `link.xml` includes `System.Security.Cryptography.X509Certificates` |
 
 ---
 
-## ASP.NET Counterpart
-
-The ASP.NET relay server (`/server`) must be updated to load a client certificate
-and present it on the gRPC channel to Unity. That change is outside this repo.
-The client cert must be signed by the same CA (`ca.crt`) that Unity is validating against.
-
-Until the ASP.NET side is updated, you can test with `grpcurl` and a client cert:
+## Testing with grpcurl
 
 ```bash
-grpcurl \
-  --cacert  Assets/Certs/ca.crt \
-  --cert    path/to/aspnet-client.crt \
-  --key     path/to/aspnet-client.key \
+grpcurl -insecure \
+  -cert path/to/client.crt \
+  -key  path/to/client.key \
   localhost:9090 list
 ```
+
+`-insecure` skips verifying Unity's certificate — needed because `gen_device_cert.sh` puts
+the name only in the CN (no subjectAltName), which grpcurl's Go TLS stack no longer accepts
+for host-name checks. The client certificate is still sent and verified by Unity. `list`
+needs server reflection, which this server does not enable, so with a valid client
+certificate you get a reflection error *after* a successful handshake; without one, the
+handshake itself fails (see the failure case above).

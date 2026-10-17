@@ -20,8 +20,8 @@ ESP32s ─MQTT/mTLS─▶ Mosquitto ─▶ ASP.NET relay ─gRPC/mTLS :9090─�
 ## Gameplay
 
 - **Co-op, two ships** — each ship has HP and a shield; players move and fire with their
-  controllers. Ships are spawned by the server when their player's input arrives — clients
-  never own a ship.
+  controllers. The server spawns both ships when a round starts — clients never own a
+  ship.
 - **AI enemies** — enemy birds spawn from the right, fly left and shoot at the ships; pipe
   barriers scroll through the level.
 - **Rounds** — started and ended by the operator (round buttons on ESP32 #1, or the relay's
@@ -31,8 +31,8 @@ ESP32s ─MQTT/mTLS─▶ Mosquitto ─▶ ASP.NET relay ─gRPC/mTLS :9090─�
 
   | Signal | Source | Effect |
   |---|---|---|
-  | `spawn_rate` | DHT11 humidity | 40 % → enemy every 3 s … 80 % → every 0.6 s; "SPAWN SURGE" callout at 65 % |
-  | `ultrasonic_zone` | HC-SR04 distance, zones 1–4 | Game speed 0.5× / 0.75× / 1× / 1.5× with a callout |
+  | `spawn_rate` | DHT11 humidity | 40 % → an enemy every 3 s, shrinking with humidity to the 1 s minimum; "SPAWN SURGE" callout at 65 % |
+  | `ultrasonic_zone` | HC-SR04 distance, zones 1–4 | Game speed 0.5× / 0.75× / 1× / 1.5× with a callout; zone 4 also halves the spawn interval (still ≥ 1 s) |
   | `gravity` | DHT11 temperature | 15 °C → gravity 40 … 40 °C → 20 (supported; not mapped in the current relay registry) |
 
 - **Spectator clients** — every Unity client is a spectator; a client can optionally
@@ -103,8 +103,8 @@ Builds/Server/ATITProject.exe -batchmode -nographics -grpcPort 9090 -gamePort 77
   -grpcCert Assets/Certs/device.crt -grpcKey Assets/Certs/device.key -caCert Assets/Certs/ca.crt
 ```
 
-The cert arguments default to those paths. If the files are missing the server logs a warning
-and starts **without TLS** — check the log for `Starting with mTLS`.
+The cert arguments default to those paths. Check the log for `Starting with mTLS` — see
+[Known limitations](#known-limitations) for what happens when the files are missing.
 
 **Spectator client** — Play Mode in the Editor, or a standalone build started with
 `-serverAddress <server-host> -gamePort 7777`.
@@ -113,7 +113,27 @@ The Unity Editor setup checklists from each phase are in [`docs/setup/`](docs/se
 
 ---
 
+## Known limitations
+
+- **Insecure fallback:** if any cert file is missing, the gRPC server logs a warning and starts
+  **without TLS** instead of refusing to start.
+- **Any project certificate is accepted:** the server checks that the client certificate is
+  signed by the project CA, not which certificate it is. A device certificate copied from an
+  ESP32's flash could call the gRPC API directly and bypass the relay's intrusion detection.
+
+---
+
 ## Development history
 
 Phase plans are in [`docs/plans/`](docs/plans/) and session logs — decisions, problems and
 fixes — in [`docs/logs/`](docs/logs/).
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). Bundled third-party assets keep their own licenses:
+TextMesh Pro (Unity Companion License), LiberationSans (SIL Open Font License, see
+`Assets/TextMesh Pro/Fonts/`), the EmojiOne sample sprites bundled with TextMesh Pro (see
+`Assets/TextMesh Pro/Sprites/EmojiOne Attribution.txt`) and the gRPC / Protobuf DLLs in
+`Assets/Plugins/grpc/` (Apache 2.0 / BSD-3-Clause).
