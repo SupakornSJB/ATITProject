@@ -26,19 +26,9 @@ namespace IoTGame.Core
         private static readonly IReadOnlyDictionary<string, float> EmptyAuxiliary =
             new Dictionary<string, float>();
 
-        private void ValidateSecret(ServerCallContext context)
-        {
-            string secret = IoTGame.Core.IoTGameServer.SharedSecret;
-            if (string.IsNullOrEmpty(secret)) return; // secret not configured — allow all
-            string provided = context.RequestHeaders.GetValue("x-iotgame-secret");
-            if (provided != secret)
-                throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid shared secret"));
-        }
-
         public override Task<InputEventResponse> SendInputEvent(
             InputEventRequest request, ServerCallContext context)
         {
-            ValidateSecret(context);
             RouteEvent(request);
             Console.WriteLine($"[IoTGameServiceImpl] InputEvent — player={request.PlayerId} input={request.InputName} type={request.EventType} value={request.Value}");
             return Task.FromResult(new InputEventResponse { Accepted = true, Message = "ok" });
@@ -47,7 +37,6 @@ namespace IoTGame.Core
         public override Task<InputEventResponse> SendEnvironmentEvent(
             EnvironmentEventRequest request, ServerCallContext context)
         {
-            ValidateSecret(context);
             EnvironmentQueue.Enqueue(new EnvironmentEvent(
                 request.EnvKey,
                 request.RawValue,
@@ -60,7 +49,6 @@ namespace IoTGame.Core
         public override Task<InputEventResponse> SendInputBatch(
             InputBatchRequest request, ServerCallContext context)
         {
-            ValidateSecret(context);
             var gameEvents = new List<InputEventRequest>(request.Events.Count);
             foreach (var evt in request.Events)
             {
@@ -74,8 +62,19 @@ namespace IoTGame.Core
             if (gameEvents.Count > 0)
                 InputQueue.Enqueue(new InputBatchEnvelope(gameEvents));
 
-            Console.WriteLine($"[IoTGameServiceImpl] InputBatch — {request.Events.Count} events");
+            Console.WriteLine($"[IoTGameServiceImpl] InputBatch received — {request.Events.Count} events queued");
             return Task.FromResult(new InputEventResponse { Accepted = true, Message = "ok" });
+        }
+
+        public override Task<AdminCommandResponse> SendAdminCommand(
+            AdminCommandRequest request, ServerCallContext context)
+        {
+            var aux = request.Auxiliary.Count > 0
+                ? (IReadOnlyDictionary<string, float>)new Dictionary<string, float>(request.Auxiliary)
+                : EmptyAuxiliary;
+            AdminCommandQueue.Enqueue(new AdminCommand(request.Command, request.IssuedBy, request.Timestamp, aux));
+            Console.WriteLine($"[IoTGameServiceImpl] AdminCommand — command={request.Command} issuedBy={request.IssuedBy}");
+            return Task.FromResult(new AdminCommandResponse { Accepted = true, Message = "ok" });
         }
 
         private static void RouteEvent(InputEventRequest request)

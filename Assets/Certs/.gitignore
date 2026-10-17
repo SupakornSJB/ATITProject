@@ -1,0 +1,7 @@
+*.key
+*.crt
+!ca.crt
+
+# .meta files for the ignored certs above
+*.meta
+!ca.crt.meta

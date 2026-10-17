@@ -10,16 +10,18 @@ namespace IoTGame.Core
     /// </summary>
     public static class IoTGameServer
     {
-        public static string SharedSecret { get; private set; } = "";
         public static bool IsRunning { get; private set; }
 
 #if UNITY_SERVER
-        public static void Initialize(int grpcPort = 9090, string secret = "")
+        public static void Initialize(
+            int    grpcPort   = 9090,
+            string certPath   = "Assets/Certs/unity-server.crt",
+            string keyPath    = "Assets/Certs/unity-server.key",
+            string caCertPath = "Assets/Certs/ca.crt")
         {
-            SharedSecret = secret ?? "";
-            Server.GrpcServerHost.Start(grpcPort);
+            Server.GrpcServerHost.Start(grpcPort, certPath, keyPath, caCertPath);
             IsRunning = true;
-            Debug.Log($"[IoTGameServer] Initialized — gRPC port {grpcPort}, secret {(string.IsNullOrEmpty(secret) ? "not set" : "set")}");
+            Debug.Log($"[IoTGameServer] Initialized — gRPC mTLS port {grpcPort}");
         }
 
         public static void Shutdown()

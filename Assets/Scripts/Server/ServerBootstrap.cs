@@ -17,15 +17,19 @@ namespace Server
         private void Start()
         {
 #if UNITY_SERVER
-            int grpcPort = 9090;
-            int gamePort = 7777;
-            string secret = "";
+            int    grpcPort   = 9090;
+            int    gamePort   = 7777;
+            string certPath   = "Assets/Certs/device.crt";
+            string keyPath    = "Assets/Certs/device.key";
+            string caCertPath = "Assets/Certs/ca.crt";
             var args = System.Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
-                if (args[i] == "-grpcPort"     && int.TryParse(args[i + 1], out int gp)) grpcPort = gp;
-                if (args[i] == "-gamePort"     && int.TryParse(args[i + 1], out int mp)) gamePort = mp;
-                if (args[i] == "-sharedSecret") secret = args[i + 1];
+                if (args[i] == "-grpcPort"  && int.TryParse(args[i + 1], out int gp)) grpcPort   = gp;
+                if (args[i] == "-gamePort"  && int.TryParse(args[i + 1], out int mp)) gamePort   = mp;
+                if (args[i] == "-grpcCert")  certPath   = args[i + 1];
+                if (args[i] == "-grpcKey")   keyPath    = args[i + 1];
+                if (args[i] == "-caCert")    caCertPath = args[i + 1];
             }
 
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
@@ -34,8 +38,8 @@ namespace Server
 
             ConnectionApprovalHandler.Register();
             NetworkManager.Singleton.StartServer();
-            IoTGame.Core.IoTGameServer.Initialize(grpcPort, secret);
-            Debug.Log($"[ServerBootstrap] Server started — gRPC:{grpcPort} game:{gamePort}");
+            IoTGame.Core.IoTGameServer.Initialize(grpcPort, certPath, keyPath, caCertPath);
+            Debug.Log($"[ServerBootstrap] Server started — gRPC mTLS:{grpcPort} game:{gamePort}");
 #else
             var transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
 
