@@ -1,7 +1,4 @@
+# Per-deployment certs — see ATITFinalProject/docs/setup.md. None are committed.
 *.key
 *.crt
-!ca.crt
-
-# .meta files for the ignored certs above
 *.meta
-!ca.crt.meta
