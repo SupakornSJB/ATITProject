@@ -6,10 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Read these before starting work — they contain decisions made, problems hit, and unsolved issues:
 
-- [`Updates/2026-04-24-session.md`](Updates/2026-04-24-session.md) — Initial implementation session; gRPC DLL setup journey; switched from Grpc.AspNetCore to Grpc.Core; unsolved: `grpc_csharp_ext` DllNotFoundException in server build
-- [`Updates/2026-04-24-session2.md`](Updates/2026-04-24-session2.md) — Phase 1 confirmed working end-to-end; Phase 2 implemented: multi-input proto v2, PlayerInputState, PlayerInputStateRegistry, batched input delivery, HorizontalSpeed NetworkVariable
-- [`Updates/2026-04-25-session.md`](Updates/2026-04-25-session.md) — Death detection (Y-position check); in-game debug console UI with ClientRpc; architecture shift to server-owned birds (no Unity client required per player); Phase 2.1 log format only
-- [`Updates/2026-04-27-session.md`](Updates/2026-04-27-session.md) — Phase 3 full implementation (space shooter); Phase 3.1 humidity; Phase 3.2 gravity/spawn-rate swap; protoc fix for SendEnvironmentEvent; first play test debugging (CalloutManager crash, false win condition, boss falling too fast, round reset leaving stale entities)
+- [`docs/logs/2026-04-24.md`](docs/logs/2026-04-24.md) — Initial implementation session; gRPC DLL setup journey; switched from Grpc.AspNetCore to Grpc.Core; unsolved: `grpc_csharp_ext` DllNotFoundException in server build
+- [`docs/logs/2026-04-24-2.md`](docs/logs/2026-04-24-2.md) — Phase 1 confirmed working end-to-end; Phase 2 implemented: multi-input proto v2, PlayerInputState, PlayerInputStateRegistry, batched input delivery, HorizontalSpeed NetworkVariable
+- [`docs/logs/2026-04-25.md`](docs/logs/2026-04-25.md) — Death detection (Y-position check); in-game debug console UI with ClientRpc; architecture shift to server-owned birds (no Unity client required per player); Phase 2.1 log format only
+- [`docs/logs/2026-04-27.md`](docs/logs/2026-04-27.md) — Phase 3 full implementation (space shooter); Phase 3.1 humidity; Phase 3.2 gravity/spawn-rate swap; protoc fix for SendEnvironmentEvent; first play test debugging (CalloutManager crash, false win condition, boss falling too fast, round reset leaving stale entities)
+- [`docs/logs/2026-04-29.md`](docs/logs/2026-04-29.md) — Phase 4 folder migration to IoTGame/Game split; Phase 5 full implementation (horizontal shooter redesign, BirdProjectile, PlayerShipUI, GameSessionManager simplification)
+- [`docs/logs/2026-05-06.md`](docs/logs/2026-05-06.md) — Phase 6 mTLS: replaced Grpc.Core.Server with Kestrel + mutual TLS; removed shared-secret validation; added CLI cert path args; new Assets/Certs/ folder
 
 ## What This Project Is
 

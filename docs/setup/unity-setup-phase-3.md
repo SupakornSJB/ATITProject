@@ -1,7 +1,7 @@
 # Unity Editor Setup — Phase 3 (Space Shooter)
 
 > Phase 1/2 setup (gRPC DLLs, stub generation, NetworkManager, gRPC DLL Inspector settings)
-> is unchanged. See [`Setup/UNITY_SETUP_PHASE_1_2.md`](Setup/UNITY_SETUP_PHASE_1_2.md) for
+> is unchanged. See [`docs/setup/unity-setup-phase-1-2.md`](docs/setup/unity-setup-phase-1-2.md) for
 > that one-time setup. This document covers only the new Phase 3 additions.
 
 ## Phase 3.1 changes (apply on top of Phase 3)

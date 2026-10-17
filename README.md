@@ -79,7 +79,7 @@ Proto/
 Assets/Plugins/grpc/       — Grpc.Core DLLs (committed)
 Assets/Editor/
   BuildServer.cs           — CLI build script for dedicated server
-Updates/                   — session logs with decisions and resolved issues
+docs/logs/                   — session logs with decisions and resolved issues
 ```
 
 ---
@@ -104,7 +104,7 @@ Default ports: gRPC `9090`, NGO game clients `7777`.
 ```powershell
 & "C:\Program Files\Unity\Hub\Editor\6000.3.11f1\Editor\Unity.exe" `
   -batchmode -quit `
-  -projectPath "C:\Users\Supakorn\Documents\CodeRepo\ATITProject" `
+  -projectPath "C:\path\to\ATITProject" `
   -executeMethod BuildServer.Build `
   -logFile build.log
 ```
@@ -120,7 +120,7 @@ Set `player-1` / `player-2` etc. on `ServerBootstrap` before building each clien
 
 ## First-Time Setup
 
-See **[UNITY_SETUP.md](UNITY_SETUP.md)** for:
+See **[docs/setup/](docs/setup/)** (start with [unity-setup-phase-1-2.md](docs/setup/unity-setup-phase-1-2.md)) and the cross-repo [setup guide](https://github.com/SupakornSJB/ATITFinalProject/blob/main/docs/setup.md) for:
 - gRPC DLL installation (already committed — skip if cloned from repo)
 - Proto stub regeneration
 - Scene and prefab configuration
@@ -132,6 +132,6 @@ See **[UNITY_SETUP.md](UNITY_SETUP.md)** for:
 
 Development history, decisions, and resolved issues:
 
-- [`Updates/2026-04-24-session.md`](Updates/2026-04-24-session.md) — Initial implementation; gRPC DLL setup journey
-- [`Updates/2026-04-24-session2.md`](Updates/2026-04-24-session2.md) — Phase 1 E2E confirmed; Phase 2 multi-input implemented
-- [`Updates/2026-04-25-session.md`](Updates/2026-04-25-session.md) — Death detection; debug console UI; server-owned bird architecture
+- [`docs/logs/2026-04-24.md`](docs/logs/2026-04-24.md) — Initial implementation; gRPC DLL setup journey
+- [`docs/logs/2026-04-24-2.md`](docs/logs/2026-04-24-2.md) — Phase 1 E2E confirmed; Phase 2 multi-input implemented
+- [`docs/logs/2026-04-25.md`](docs/logs/2026-04-25.md) — Death detection; debug console UI; server-owned bird architecture
