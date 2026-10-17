@@ -1,137 +1,119 @@
-# ATITProject — IoT Multiplayer Flappy Bird (Unity)
+# ATITProject — IoT Co-op Shooter (Unity)
 
-A proof-of-concept multiplayer game where physical ESP32 button devices act as
-controllers. Press a real button → your in-game bird flaps. Built with Unity 6 LTS
-and Netcode for GameObjects.
+Unity 6 dedicated server and spectator client for
+[ATITFinalProject](https://github.com/SupakornSJB/ATITFinalProject). Two players fly ships
+with **physical ESP32 controllers** — a thumbstick on one board, a knob and buttons on the
+other — while the room itself shapes the game: humidity drives how fast enemies spawn and a
+distance sensor sets the game speed.
 
-This is the **Unity game client + dedicated server** component of a three-part system.
-
----
-
-## System Architecture
+The dedicated server receives controller input over **gRPC with mutual TLS** from the
+[relay server](https://github.com/SupakornSJB/ATITInfraNode) and replicates the
+authoritative game state to every connected client with Netcode for GameObjects.
 
 ```
-[ESP32 #1..N]
-  Physical button press
-        │  MQTT over TLS → HiveMQ Cloud
-        ▼
-[ASP.NET Core Server]
-  Maps deviceId → playerId, forwards over gRPC
-        │  gRPC (HTTP/2 + Protobuf)
-        ▼
-[Unity Dedicated Server]  ← this repo
-  Receives input, runs physics, replicates state
-        │  Netcode for GameObjects (NGO)
-        ▼
-[Unity Game Client]  ← this repo
-  Renders all birds in real time
+ESP32s ─MQTT/mTLS─▶ Mosquitto ─▶ ASP.NET relay ─gRPC/mTLS :9090─▶ Unity dedicated server ─NGO :7777─▶ clients
+                                                                   (this repo)                       (this repo)
 ```
 
 ---
 
 ## Gameplay
 
-- Each player has a colored block (bird) that falls due to gravity
-- Pressing the physical button sends a `jump` input through the cloud → server → Unity
-- The server applies an upward velocity impulse to that player's bird
-- All connected clients see all birds moving in real time
-- Birds that fall below the death threshold are despawned and respawn on next input
-- Players do **not** need a connected Unity client — birds spawn purely from IoT input
+- **Co-op, two ships** — each ship has HP and a shield; players move and fire with their
+  controllers. Ships are spawned by the server when their player's input arrives — clients
+  never own a ship.
+- **AI enemies** — enemy birds spawn from the right, fly left and shoot at the ships; pipe
+  barriers scroll through the level.
+- **Rounds** — started and ended by the operator (round buttons on ESP32 #1, or the relay's
+  admin API). Players win when the session timer runs out with a ship alive and lose when
+  both ships reach 0 HP.
+- **Environment** (via `EnvironmentController`):
+
+  | Signal | Source | Effect |
+  |---|---|---|
+  | `spawn_rate` | DHT11 humidity | 40 % → enemy every 3 s … 80 % → every 0.6 s; "SPAWN SURGE" callout at 65 % |
+  | `ultrasonic_zone` | HC-SR04 distance, zones 1–4 | Game speed 0.5× / 0.75× / 1× / 1.5× with a callout |
+  | `gravity` | DHT11 temperature | 15 °C → gravity 40 … 40 °C → 20 (supported; not mapped in the current relay registry) |
+
+- **Spectator clients** — every Unity client is a spectator; a client can optionally
+  highlight one player's UI.
 
 ---
 
-## Tech Stack
+## How input reaches the game
 
-| Layer | Technology |
+```
+gRPC (background thread)                         Unity main thread
+IoTGameServiceImpl ─▶ ConcurrentQueue ─▶ IoTInputManager ─▶ InputEventDispatcher ─▶ GameInputRouter ─▶ PlayerShip
+                                                          ├▶ EnvironmentEventDispatcher ─▶ EnvironmentController
+                                                          └▶ AdminCommandDispatcher ─▶ GameSessionManager
+```
+
+gRPC calls arrive on a background thread, so they are only queued there and drained on the
+main thread each frame. `GameInputRouter` maps semantic inputs from the relay (`move-x`,
+`move-y`, `move-y-up`, `move-y-down`, `fire`, `admin-start`, `admin-end`) to game actions.
+
+---
+
+## Project structure
+
+```
+Assets/
+├── IoTGame/                 # Reusable IoT input layer (game-agnostic)
+│   ├── Core/                # GrpcServerHost (mTLS), IoTGameServer facade, IoTGameServiceImpl,
+│   │                        # IoTInputManager + input / environment / admin dispatchers
+│   ├── Models/              # IoTInputEvent, EnvironmentEvent, AdminCommand
+│   └── Generated/           # gRPC stubs from Proto/ (do not edit)
+├── Scripts/
+│   ├── Managers/            # GameSessionManager, GameInputRouter, EnvironmentController,
+│   │                        # EnemySpawnManager, PipeSpawnManager, BirdSpawnManager, CalloutManager, …
+│   ├── Players/             # PlayerShip (+UI), EnemyBird, PipeBarrier, projectiles
+│   ├── Server/              # ServerBootstrap (CLI args, server/client start), ConnectionApprovalHandler
+│   └── UI/                  # RoundUIManager, DebugConsoleUI
+├── Editor/BuildServer.cs    # CLI dedicated-server build (copies certs next to the binary)
+├── Certs/                   # mTLS certificates — git-ignored, see setup guide
+└── Plugins/grpc/            # Grpc.Core native + managed DLLs
+Proto/game_controller_v2.proto   # gRPC contract shared with the relay
+```
+
+| | |
 |---|---|
-| Unity version | 6000.3.11f1 (Unity 6 LTS) |
-| Multiplayer | Netcode for GameObjects 2.9.1 |
-| Rendering | URP 17.3.0 |
-| IoT input protocol | gRPC via `Grpc.Core` (netstandard2.0) |
-| Proto contract | `Proto/game_controller_v2.proto` |
+| Unity | 6000.3.11f1 (Unity 6 LTS), URP 17.3 |
+| Multiplayer | Netcode for GameObjects 2.9.1, Unity Transport |
+| IoT transport | `Grpc.Core` server with `SslServerCredentials` — client certificate required and verified against the project CA |
+| RPCs | `SendInputEvent`, `SendInputBatch`, `SendEnvironmentEvent`, `SendAdminCommand` |
 
 ---
 
-## Project Structure
+## Building and running
 
-```
-Assets/Scripts/
-  Players/
-    PlayerBird.cs          — NetworkBehaviour; handles flap, analog, death, color sync
-    PlayerInputState.cs    — per-player input state struct (keyed by inputName)
-  Managers/
-    BirdSpawnManager.cs    — spawns/despawns server-owned birds on first IoT input
-    IoTInputManager.cs     — drains gRPC input queue; dispatches to PlayerBird
-    PlayerInputStateRegistry.cs — tracks input state + sequence numbers per player
-    PlayerDistinguisherManager.cs — assigns unique colors to players
-  Server/
-    ServerBootstrap.cs     — starts NGO server + gRPC host; parses CLI args
-    GrpcServerHost.cs      — embedded Grpc.Core server on background thread
-    IoTGameServiceImpl.cs  — gRPC service impl; enqueues to ConcurrentQueue
-    ConnectionApprovalHandler.cs — approves spectator Unity clients
-  UI/
-    DebugConsoleUI.cs      — in-game overlay showing live input feed (via ClientRpc)
-  Shared/
-    NetworkSingleton.cs    — base class for all networked manager singletons
-  Generated/               — auto-generated gRPC stubs (do not edit)
-Proto/
-  game_controller_v2.proto — shared contract with ASP.NET server
-Assets/Plugins/grpc/       — Grpc.Core DLLs (committed)
-Assets/Editor/
-  BuildServer.cs           — CLI build script for dedicated server
-docs/logs/                   — session logs with decisions and resolved issues
-```
+Generate the certificates and copy `ca.crt`, `device.crt` and `device.key` (CN `unity-server`)
+into `Assets/Certs/` first — see the
+[setup guide](https://github.com/SupakornSJB/ATITFinalProject/blob/main/docs/setup.md).
 
----
-
-## Running the Dedicated Server
-
-```powershell
-# Run in current console (all logs visible)
-Start-Process ATITProject.exe `
-  -ArgumentList "-batchmode -nographics -grpcPort 9090 -gamePort 7777" `
-  -NoNewWindow -Wait
-```
-
-Default ports: gRPC `9090`, NGO game clients `7777`.
-
----
-
-## Building
-
-### Dedicated server (no platform switch needed)
+**Dedicated server** — CLI build (also available from File → Build Settings → Dedicated Server):
 
 ```powershell
 & "C:\Program Files\Unity\Hub\Editor\6000.3.11f1\Editor\Unity.exe" `
-  -batchmode -quit `
-  -projectPath "C:\path\to\ATITProject" `
-  -executeMethod BuildServer.Build `
-  -logFile build.log
+  -batchmode -quit -projectPath "C:\path\to\ATITProject" `
+  -executeMethod BuildServer.Build -logFile build.log
+# → Builds/Server/ATITProject.exe, with Assets/Certs/ copied next to it
+
+Builds/Server/ATITProject.exe -batchmode -nographics -grpcPort 9090 -gamePort 7777 `
+  -grpcCert Assets/Certs/device.crt -grpcKey Assets/Certs/device.key -caCert Assets/Certs/ca.crt
 ```
 
-Output: `Builds/Server/ATITProject.exe`
+The cert arguments default to those paths. If the files are missing the server logs a warning
+and starts **without TLS** — check the log for `Starting with mTLS`.
 
-### Game client
+**Spectator client** — Play Mode in the Editor, or a standalone build started with
+`-serverAddress <server-host> -gamePort 7777`.
 
-Open in Unity Editor → File → Build Settings → Standalone → Build.
-Set `player-1` / `player-2` etc. on `ServerBootstrap` before building each client.
-
----
-
-## First-Time Setup
-
-See **[docs/setup/](docs/setup/)** (start with [unity-setup-phase-1-2.md](docs/setup/unity-setup-phase-1-2.md)) and the cross-repo [setup guide](https://github.com/SupakornSJB/ATITFinalProject/blob/main/docs/setup.md) for:
-- gRPC DLL installation (already committed — skip if cloned from repo)
-- Proto stub regeneration
-- Scene and prefab configuration
-- NetworkManager setup
+The Unity Editor setup checklists from each phase are in [`docs/setup/`](docs/setup/).
 
 ---
 
-## Session Logs
+## Development history
 
-Development history, decisions, and resolved issues:
-
-- [`docs/logs/2026-04-24.md`](docs/logs/2026-04-24.md) — Initial implementation; gRPC DLL setup journey
-- [`docs/logs/2026-04-24-2.md`](docs/logs/2026-04-24-2.md) — Phase 1 E2E confirmed; Phase 2 multi-input implemented
-- [`docs/logs/2026-04-25.md`](docs/logs/2026-04-25.md) — Death detection; debug console UI; server-owned bird architecture
+Phase plans are in [`docs/plans/`](docs/plans/) and session logs — decisions, problems and
+fixes — in [`docs/logs/`](docs/logs/).
