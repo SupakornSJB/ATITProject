@@ -122,7 +122,7 @@ namespace Managers
         }
 
         // Higher humidity → faster spawning.
-        // Range: 40% → 3s interval, 80% → 0.6s interval (aggressive curve)
+        // Range: 40% → 3s interval, 80% → 0.6s target (EnemySpawnManager clamps to a 1s minimum)
         private void ApplySpawnRateEffect(float humidity)
         {
             float interval = Mathf.Lerp(3f, 0.6f, Mathf.InverseLerp(40f, 80f, humidity));

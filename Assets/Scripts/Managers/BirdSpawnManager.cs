@@ -33,7 +33,7 @@ namespace Managers
         }
 
         // Idempotent: spawns the correct NetworkObject for a given playerId role.
-        // Called from ConnectionApprovalHandler on NGO connect, and from IoTInputManager on first input.
+        // Called by GameSessionManager for both players when the round becomes Active.
         public void SpawnForPlayer(string playerId)
         {
             if (!IsServer) return;

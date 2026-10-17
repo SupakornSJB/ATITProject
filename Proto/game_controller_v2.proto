@@ -17,7 +17,7 @@ message InputEventRequest {
   string input_name      = 3;
   string input_type      = 4;  // "button", "knob", "sensor", "environment", "admin"
   string event_type      = 5;  // "pressed", "released", "change"
-  float  value           = 6;  // always normalized 0.0-1.0
+  float  value           = 6;  // buttons 1.0/0.0, knobs 0.0-1.0; stage values as sent by the relay
   int64  timestamp       = 7;
   int64  sequence_number = 8;
 }

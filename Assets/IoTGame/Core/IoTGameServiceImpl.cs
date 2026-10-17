@@ -15,7 +15,7 @@ namespace IoTGame.Core
         public InputBatchEnvelope(List<InputEventRequest> events) => Events = events;
     }
 
-    // Never touch the Unity API from inside this class — all calls come in on Kestrel
+    // Never touch the Unity API from inside this class — all calls come in on Grpc.Core
     // background threads. Enqueue only; managers drain the queues on the main thread.
     public class IoTGameServiceImpl : GameControllerService.GameControllerServiceBase
     {

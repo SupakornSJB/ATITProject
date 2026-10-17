@@ -1,5 +1,6 @@
 // Hand-authored supplement to GameControllerV2.cs — adds AdminCommandRequest and
-// AdminCommandResponse which are not in the original proto but are called by the relay.
+// AdminCommandResponse, which GameControllerV2.cs lacks because it was generated before they
+// were added to Proto/game_controller_v2.proto. Delete this file if you regenerate the stubs.
 // Field numbers match the relay's proto definition exactly.
 #pragma warning disable 1591, 0612, 3021, 8981
 #region Designer generated code

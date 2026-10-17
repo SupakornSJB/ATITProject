@@ -15,8 +15,8 @@ namespace IoTGame.Core
 #if UNITY_SERVER
         public static void Initialize(
             int    grpcPort   = 9090,
-            string certPath   = "Assets/Certs/unity-server.crt",
-            string keyPath    = "Assets/Certs/unity-server.key",
+            string certPath   = "Assets/Certs/device.crt",
+            string keyPath    = "Assets/Certs/device.key",
             string caCertPath = "Assets/Certs/ca.crt")
         {
             Server.GrpcServerHost.Start(grpcPort, certPath, keyPath, caCertPath);
